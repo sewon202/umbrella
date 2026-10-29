@@ -51,7 +51,7 @@ db.serialize(() => {
   `);
 
   const addStation = db.prepare("INSERT OR IGNORE INTO stations(code, name) VALUES (?, ?)");
-  [["A1", "학생회관 1층 정문"], ["B2", "중앙도서관 출입구"], ["C3", "공학관 로비"]]
+  [["A1", "학생회관 정문"], ["B2", "중앙도서관 출입구"], ["C3", "형남공학관 2층 입구"]]
     .forEach((s) => addStation.run(s[0], s[1]));
   addStation.finalize();
 });
