@@ -139,3 +139,7 @@ app.post("/api/open", (req, res) => {
       res.json({ ok: true, message: `${slot}번 문 열기 명령이 전송되었습니다.` });
     });
 });
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
