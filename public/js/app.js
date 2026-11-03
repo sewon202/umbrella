@@ -417,8 +417,9 @@ function tick() {
     el.querySelector(".tl").textContent = over ? "반납 기한이 지났어요" : "남은 대여시간";
     el.querySelector(".tv").textContent = (over ? "+" : "") + fmt(Math.abs(left));
     el.querySelector(".bar i").style.width = `${Math.max(0, Math.min(100, (left / RENT_LIMIT_MS) * 100))}%`;
+    const stationLabel = STATION_NAMES[r.station] || STATION_QR[r.station] || r.station;
     el.querySelector(".ts").textContent =
-      `${r.station} ${r.slot}번 칸 · 반납 기한 ` +
+      `${stationLabel} ${r.slot}번 칸 · 반납 기한 ` +
       new Date(due).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
   });
 }
