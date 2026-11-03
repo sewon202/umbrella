@@ -205,6 +205,17 @@ function syncUserChrome() {
   $("setSid").textContent = state.user.id;
   $("placeName").textContent = STATION_NAMES[state.station] || state.station;
   $("placeCode").textContent = `대여소 코드 ${STATION_QR[state.station] || state.station}`;
+
+  const renting = !!(state.user.activeRental);
+  const btn = $("homeRentBtn");
+  const label = btn && btn.querySelector(".home-rent-label");
+  const sub = btn && btn.querySelector(".home-rent-sub");
+  if (btn) {
+    btn.setAttribute("aria-label", renting ? "우산 반납하기" : "우산 대여하기");
+    btn.classList.toggle("is-return", renting);
+  }
+  if (label) label.textContent = renting ? "우산 반납하기" : "우산 대여하기";
+  if (sub) sub.textContent = renting ? "QR 스캔으로 반납" : "QR 스캔으로 시작";
 }
 
 function myRentalHere() {
@@ -217,6 +228,7 @@ async function refreshInventory() {
   state.slots = inv.slots;
   if (state.user) {
     state.user.activeRental = await getMyActiveRental(state.user.uid);
+    syncUserChrome();
   }
 }
 
