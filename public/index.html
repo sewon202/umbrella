@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>숭실 우산 대여</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=41">
+<link rel="stylesheet" href="/css/app.css?v=46">
 </head>
 <body>
 <main>
@@ -157,8 +157,9 @@
 
 <section class="view view-immersive" id="v-qr">
   <div class="qr-stage" id="qrFrame">
-    <video id="qrVideo" class="qr-video" playsinline muted autoplay></video>
-    <div class="qr-veil" aria-hidden="true"></div>
+    <!-- 준비 전엔 숨김 → iOS에서 작게 떴다 커지는 플래시 방지 -->
+    <video id="qrVideo" class="qr-video" playsinline webkit-playsinline muted autoplay></video>
+    <div class="qr-stage-bg" aria-hidden="true"></div>
 
     <div class="qr-chrome">
       <header class="qr-top">
@@ -172,6 +173,7 @@
         <span class="qr-top-spacer" aria-hidden="true"></span>
       </header>
 
+      <!-- box-shadow 컷아웃으로 인식부만 밝게 (GCOO/SWING) -->
       <div class="qr-viewfinder" aria-hidden="true">
         <span class="qr-corner tl"></span>
         <span class="qr-corner tr"></span>
@@ -179,6 +181,7 @@
         <span class="qr-corner br"></span>
         <span class="qr-cross"></span>
         <div class="qr-scanline"></div>
+        <div class="qr-finder-loading" id="qrFinderLoading" aria-hidden="true"></div>
       </div>
 
       <div class="qr-controls">
@@ -389,6 +392,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=41"></script>
+<script type="module" src="/js/app.js?v=46"></script>
 </body>
 </html>

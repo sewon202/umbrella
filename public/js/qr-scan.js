@@ -49,21 +49,18 @@ async function openCameraStream() {
 
   // 폰: 후면(environment)만 — 전면으로 폴백하지 않음
   if (isPhoneLike()) {
+    // 해상도 ideal을 느슨하게 — iOS에서 작은 프리뷰→확대 플래시 완화
     const rearAttempts = [
       {
         audio: false,
         video: {
           facingMode: { exact: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
         },
       },
       {
         audio: false,
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
         },
       },
     ];
@@ -208,11 +205,16 @@ export async function startQrScan({ video, onResult, onError }) {
       throw new Error("HTTPS 또는 localhost에서만 카메라를 사용할 수 있어요.");
     }
     stream = await openCameraStream();
-    videoEl.srcObject = stream;
     videoEl.setAttribute("playsinline", "true");
+    videoEl.setAttribute("webkit-playsinline", "true");
     videoEl.muted = true;
-    await videoEl.play();
+    videoEl.playsInline = true;
+    // 크기 확정 전에는 CSS opacity:0 — src 연결 직후 작은 프레임이 보이지 않음
+    videoEl.srcObject = stream;
+    await videoEl.play().catch(() => {});
     await waitForVideo(videoEl);
+    // 한 프레임 더 기다려 layout에 cover 크기 반영
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     videoReady = true;
     await ensureDetector();
     if (!detector) await loadJsQR().catch(() => {});

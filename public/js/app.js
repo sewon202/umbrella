@@ -16,7 +16,7 @@ import {
   RENT_LIMIT_MS,
   STATIONS,
 } from "/js/backend.js";
-import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn } from "/js/qr-scan.js";
+import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn } from "/js/qr-scan.js?v=46";
 import {
   initCampusMap,
   selectStation,
@@ -25,6 +25,9 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=45";
+
+initUiScale();
 
 function applyUser(res) {
   state.user = {
@@ -137,6 +140,8 @@ function parseStationCode(raw) {
 
 function setTabbar(visible) {
   $("tabbar").hidden = !visible;
+  // 탭바 표시 여부가 바뀌면 CTA 2/3 기준 높이도 다시 잡음
+  requestAnimationFrame(() => updateUiScale());
   document.body.classList.toggle("no-tab", !visible);
 }
 
@@ -197,9 +202,13 @@ function show(id, { tab } = {}) {
   document.body.classList.toggle("qr-open", id === "v-qr");
   document.body.classList.toggle("map-open", id === "v-map");
   setTabbar(shell);
+  // iOS Safari: 홈/설정은 보이는 뷰포트에 고정 (주소창 때문에 생기던 페이지 스크롤 차단)
+  setShellScrollLock(shell);
   if (shell) setTabActive(tab || (id === "v-settings" ? "settings" : "home"));
   else if (id === "v-qr") setTabActive("qr");
   if (!immersive) window.scrollTo(0, 0);
+  // 홈 CTA 실측 보정(다른 화면도 같은 --ui-scale 유지)
+  requestAnimationFrame(() => updateUiScale());
 }
 
 function setMsg(text) {
