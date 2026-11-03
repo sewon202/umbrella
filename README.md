@@ -88,11 +88,3 @@ npm run firebase:rules            # 규칙만
 
 설정은 `public/firebase-config.js`, 프로젝트는 `.firebaserc`를 참고하세요.  
 device 계정·API 키는 보드 스케치와 동일해야 합니다.
-
----
-
-## 참고
-
-- `umbrella.db`는 로컬 개발용이라 **커밋하지 마세요** (비밀번호 해시·대여 기록 등).  
-- 실서비스 데이터는 Firestore에 있습니다.  
-- 커밋 author는 기여자 본인만 사용하고, Cursor 등 도구 계정을 contributors에 넣지 않습니다.
