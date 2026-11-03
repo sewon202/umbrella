@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>숭실 우산 대여</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=14">
+<link rel="stylesheet" href="/css/app.css?v=28">
 </head>
 <body>
 <main>
 
 <section class="view on" id="v-login">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=28" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title">학번으로<br>바로 시작해요</h1>
@@ -36,7 +36,7 @@
 
 <section class="view" id="v-signup">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=28" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title">회원가입</h1>
@@ -68,11 +68,11 @@
 
 <section class="view" id="v-home">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=28" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title"><span id="homeWho">안녕하세요</span></h1>
-  <p class="hero-sub">하단 QR 버튼으로 대여소 코드를 인식해 주세요.</p>
+  <p class="hero-sub">QR을 스캔하거나 아래 버튼으로 대여를 시작해요.</p>
   <div class="timer" id="homeTimer" hidden><div class="tl"></div><div class="tv"></div><div class="bar"><i></i></div><div class="ts"></div></div>
   <div class="sheet home-card">
     <p class="home-card-title">이용 방법</p>
@@ -82,30 +82,156 @@
       <li>사용한 뒤 같은 칸에 반납해요</li>
     </ol>
   </div>
+  <div class="home-cta-wrap">
+    <button type="button" class="home-map-btn" id="homeMapBtn" aria-label="지도에서 찾기">
+      <span class="home-map-ico" aria-hidden="true">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+          <path d="M9 4.2 3.5 6.2v13.1L9 17.3l6 2.5 5.5-2V4.7L15 6.7 9 4.2z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+          <path d="M9 4.2V17.3M15 6.7v13.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          <circle cx="12.2" cy="11" r="2.2" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="home-rent-label">지도</span>
+      <span class="home-rent-sub">보관함 위치</span>
+    </button>
+    <button type="button" class="home-rent-btn" id="homeRentBtn" aria-label="우산 대여하기">
+      <span class="home-rent-ico" aria-hidden="true">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+          <path d="M12 3c-3.2 0-5.8 2.2-6.6 5.1C3.7 8.4 2.5 9.9 2.5 11.7c0 .4.3.8.8.8h17.4c.4 0 .8-.4.8-.8 0-1.8-1.2-3.3-2.9-3.6C17.8 5.2 15.2 3 12 3z" fill="currentColor"/>
+          <path d="M12 12.5v7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M12 21.2c1.1 0 1.7-.7 1.7-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="home-rent-label">우산 대여하기</span>
+      <span class="home-rent-sub">QR 스캔으로 시작</span>
+    </button>
+  </div>
 </section>
 
-<section class="view" id="v-qr">
-  <button type="button" class="nav-back" id="qrBack">← 홈으로</button>
-  <h1 class="hero-title">QR 스캔</h1>
-  <p class="hero-sub">대여소 QR을 화면 안에 맞춰 주세요.</p>
-  <div class="qr-frame" aria-hidden="true">
-    <div class="qr-viewfinder">
-      <span class="qr-corner tl"></span>
-      <span class="qr-corner tr"></span>
-      <span class="qr-corner bl"></span>
-      <span class="qr-corner br"></span>
-      <p class="qr-hint">카메라 연동 준비 중</p>
+<section class="view view-immersive" id="v-map">
+  <div id="mapCanvas" class="map-canvas" role="application" aria-label="숭실대학교 우산 보관함 지도"></div>
+  <button type="button" class="map-back" id="mapBack" aria-label="홈으로">←</button>
+  <div class="map-float-hint">핀을 눌러 대여·반납 현황을 봐요</div>
+
+  <div class="map-sheet" id="mapSheet" hidden>
+    <div class="map-sheet-handle" aria-hidden="true"></div>
+    <div class="map-sheet-head">
+      <div>
+        <h2 class="map-sheet-title" id="mapStationName">대여소</h2>
+        <p class="map-sheet-meta" id="mapStationMeta"></p>
+      </div>
+      <button type="button" class="map-sheet-close" id="mapSheetClose" aria-label="닫기">×</button>
+    </div>
+    <div class="map-stats" id="mapStats">
+      <div class="map-stat rent">
+        <strong id="mapRentN">0</strong>
+        <span>대여 가능</span>
+      </div>
+      <div class="map-stat ret">
+        <strong id="mapReturnN">0</strong>
+        <span>반납 가능</span>
+      </div>
+    </div>
+    <div class="map-planned" id="mapPlanned" hidden>
+      <strong>추후 지원 예정</strong>
+      <p>이 거점은 아직 준비 중이에요. 지금은 형남공학관 2층 입구만 이용할 수 있어요.</p>
+    </div>
+    <button type="button" class="btn" id="mapSlotsBtn" aria-expanded="false">보관함 현황 보기</button>
+    <div class="map-slots-panel" id="mapSlotsPanel">
+      <div class="map-slots-panel-inner">
+        <div class="map-slots" id="mapSlots"></div>
+      </div>
+    </div>
+    <button type="button" class="btn ghost" id="mapGoRent" style="margin-top:10px">이 대여소 QR 스캔</button>
+  </div>
+</section>
+
+<section class="view view-immersive" id="v-qr">
+  <div class="qr-stage" id="qrFrame">
+    <video id="qrVideo" class="qr-video" playsinline muted autoplay></video>
+    <div class="qr-veil" aria-hidden="true"></div>
+
+    <div class="qr-chrome">
+      <header class="qr-top">
+        <button type="button" class="qr-icon-btn" id="qrBack" aria-label="닫기">
+          <span aria-hidden="true">×</span>
+        </button>
+        <div class="qr-top-copy">
+          <h1 class="qr-title">QR코드 스캔</h1>
+          <p class="qr-sub" id="qrHint">대여소 QR을 네모 안에 맞춰 주세요</p>
+        </div>
+        <span class="qr-top-spacer" aria-hidden="true"></span>
+      </header>
+
+      <div class="qr-viewfinder" aria-hidden="true">
+        <span class="qr-corner tl"></span>
+        <span class="qr-corner tr"></span>
+        <span class="qr-corner bl"></span>
+        <span class="qr-corner br"></span>
+        <span class="qr-cross"></span>
+        <div class="qr-scanline"></div>
+      </div>
+
+      <div class="qr-controls">
+        <button type="button" class="qr-ctrl" id="qrManual">
+          <span class="qr-ctrl-ico" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="3" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="3" y="17" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="17" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="17" width="5" height="5" rx="1.2" fill="currentColor"/></svg>
+          </span>
+          <span class="qr-ctrl-label">번호 직접입력</span>
+        </button>
+        <button type="button" class="qr-ctrl" id="qrTorch" aria-pressed="false">
+          <span class="qr-ctrl-ico" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M9 2h6l1 5h-8L9 2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 7h8v4l-1.2 2.2V20a1 1 0 0 1-1 1h-3.6a1 1 0 0 1-1-1v-6.8L8 11V7z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M11 12h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </span>
+          <span class="qr-ctrl-label" id="qrTorchLabel">라이트 켜기</span>
+        </button>
+      </div>
+
+      <button type="button" class="btn qr-retry" id="qrRetryCam" hidden>카메라 다시 켜기</button>
+    </div>
+
+    <div class="qr-success" id="qrSuccess" hidden>
+      <div class="qr-success-badge" aria-hidden="true">✓</div>
+      <p class="qr-success-text" id="qrSuccessText">보관함을 찾았어요</p>
     </div>
   </div>
+
+  <div class="qr-toast" id="qrToast" hidden role="alert" aria-live="assertive">
+    <span class="qr-toast-ico" aria-hidden="true">!</span>
+    <span class="qr-toast-msg" id="qrToastMsg"></span>
+  </div>
+</section>
+
+<section class="view" id="v-code">
+  <button type="button" class="nav-back" id="codeBack">← 돌아가기</button>
+  <h1 class="hero-title">코드 직접 입력</h1>
+  <p class="hero-sub">QR 아래 영문+숫자 코드가 있어요</p>
+  <div class="code-field">
+    <input
+      id="codeInput"
+      type="text"
+      inputmode="text"
+      autocomplete="off"
+      autocapitalize="characters"
+      spellcheck="false"
+      maxlength="8"
+      placeholder="예: A7482"
+      aria-label="대여소 코드"
+    >
+  </div>
+  <p class="err" id="codeErr"></p>
   <div class="stack-gap">
-    <button class="btn" id="qrTempA1" type="button">임시 · 학생회관 정문으로</button>
-    <p class="footer-link">나중에 실제 카메라 QR 인식으로 연결돼요</p>
+    <button class="btn" id="codeSubmit" type="button">확인</button>
+    <button class="btn ghost code-to-qr" id="codeToQr" type="button">
+      <span class="code-to-qr-ico" aria-hidden="true">▣</span>
+      QR 스캔
+    </button>
   </div>
 </section>
 
 <section class="view" id="v-settings">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=28" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">설정</div>
   </div>
   <div class="sheet settings-list">
@@ -173,19 +299,38 @@
 
 <nav class="tabbar" id="tabbar" hidden>
   <button type="button" class="tab" data-tab="home" id="tabHome">
-    <span class="tab-ico" aria-hidden="true">⌂</span>
+    <span class="tab-ico" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4.5 10.8 12 4.5l7.5 6.3V20a1 1 0 0 1-1 1h-4.2v-5.2h-4.6V21H5.5a1 1 0 0 1-1-1v-9.2z" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>
+    </span>
     <span>홈</span>
   </button>
   <button type="button" class="tab tab-qr" data-tab="qr" id="tabQr" aria-label="QR 스캔">
-    <span class="tab-qr-btn">QR</span>
+    <span class="tab-qr-btn" aria-hidden="true">
+      <svg class="tab-qr-svg" width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect x="3" y="3" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="2"/>
+        <rect x="5.5" y="5.5" width="4" height="4" rx="0.6" fill="currentColor"/>
+        <rect x="16" y="3" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="2"/>
+        <rect x="18.5" y="5.5" width="4" height="4" rx="0.6" fill="currentColor"/>
+        <rect x="3" y="16" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="2"/>
+        <rect x="5.5" y="18.5" width="4" height="4" rx="0.6" fill="currentColor"/>
+        <rect x="16" y="16" width="3" height="3" fill="currentColor"/>
+        <rect x="20.5" y="16" width="4.5" height="2" fill="currentColor"/>
+        <rect x="16" y="20.5" width="2" height="4.5" fill="currentColor"/>
+        <rect x="19.5" y="20" width="2.2" height="2.2" fill="currentColor"/>
+        <rect x="23" y="22.5" width="2" height="2.5" fill="currentColor"/>
+        <rect x="22.5" y="19" width="2.5" height="2" fill="currentColor"/>
+      </svg>
+    </span>
   </button>
   <button type="button" class="tab" data-tab="settings" id="tabSettings">
-    <span class="tab-ico" aria-hidden="true">⚙</span>
+    <span class="tab-ico" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" stroke="currentColor" stroke-width="1.9"/><path d="M19.4 13.1c.05-.36.05-.74 0-1.1l1.7-1.3-1.6-2.8-2 .8a6.7 6.7 0 0 0-1.9-1.1l-.3-2.1H9.7l-.3 2.1c-.68.26-1.32.62-1.9 1.1l-2-.8-1.6 2.8 1.7 1.3c-.05.36-.05.74 0 1.1L4 14.4l1.6 2.8 2-.8c.58.48 1.22.84 1.9 1.1l.3 2.1h3.4l.3-2.1c.68-.26 1.32-.62 1.9-1.1l2 .8 1.6-2.8-1.6-1.3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+    </span>
     <span>설정</span>
   </button>
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=14"></script>
+<script type="module" src="/js/app.js?v=28"></script>
 </body>
 </html>

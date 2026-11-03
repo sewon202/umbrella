@@ -15,6 +15,15 @@ import {
   RENT_LIMIT_MS,
   STATIONS,
 } from "/js/backend.js";
+import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn } from "/js/qr-scan.js";
+import {
+  initCampusMap,
+  selectStation,
+  clearStationSelection,
+  resizeCampusMap,
+  summarizeSlots,
+  plannedSlotDetail,
+} from "/js/map-view.js";
 
 function applyUser(res) {
   state.user = {
@@ -26,10 +35,20 @@ function applyUser(res) {
 }
 
 const STATION_NAMES = Object.fromEntries(STATIONS.map((s) => [s.code, s.name]));
+const STATION_BY_KEY = (() => {
+  const map = Object.create(null);
+  for (const s of STATIONS) {
+    map[s.code.toUpperCase()] = s.code;
+    if (s.qr) map[String(s.qr).toUpperCase()] = s.code;
+  }
+  return map;
+})();
+const STATION_QR = Object.fromEntries(STATIONS.map((s) => [s.code, s.qr || s.code]));
 const $ = (id) => document.getElementById(id);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const DOOR_MS = 720;
 const DOOR_HOLD_MS = 2200;
+const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
 
 const state = {
   user: null,
@@ -47,22 +66,56 @@ function authHash() {
   return k === "signup" || k === "login" ? k : null;
 }
 
+function resolveStationKey(token) {
+  if (!token) return null;
+  return STATION_BY_KEY[String(token).trim().toUpperCase()] || null;
+}
+
 function readStationFromHash() {
   const k = (location.hash || "").replace(/^#/, "").toUpperCase();
   if (k === "SIGNUP" || k === "LOGIN") return null;
-  return STATION_NAMES[k] ? k : null;
+  return resolveStationKey(k);
 }
 
-/** QR / URL / 해시에서 대여소 코드 추출 (A1, B2, C3…) */
+/**
+ * QR / URL / 입력에서 내부 station code(A1…) 추출
+ * 인쇄용 고유번호(A1234…)와 내부 코드 모두 허용. 짧은 우연 매칭은 막음.
+ */
 function parseStationCode(raw) {
-  const text = String(raw || "").trim().toUpperCase();
-  if (STATION_NAMES[text]) return text;
-  const hash = text.match(/#([A-Z0-9]+)/);
-  if (hash && STATION_NAMES[hash[1]]) return hash[1];
-  const path = text.match(/(?:STATION|UMBRELLA)[=:/]([A-Z0-9]+)/);
-  if (path && STATION_NAMES[path[1]]) return path[1];
-  for (const code of Object.keys(STATION_NAMES)) {
-    if (text.includes(code)) return code;
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const upper = text.toUpperCase().replace(/\s+/g, "");
+
+  const direct = resolveStationKey(upper);
+  if (direct) return direct;
+
+  try {
+    const url = new URL(text, location.origin);
+    const hash = (url.hash || "").replace(/^#/, "").toUpperCase();
+    const fromHash = resolveStationKey(hash);
+    if (fromHash) return fromHash;
+    const q = (url.searchParams.get("station") || url.searchParams.get("code") || "").toUpperCase();
+    const fromQ = resolveStationKey(q);
+    if (fromQ) return fromQ;
+    for (const p of url.pathname.split("/").filter(Boolean)) {
+      const hit = resolveStationKey(p);
+      if (hit) return hit;
+    }
+  } catch (_) {
+    /* not a URL */
+  }
+
+  const tagged = upper.match(/(?:STATION|UMBRELLA|LOCKER)[=:/_-]?([A-Z][A-Z0-9]{3,7})/);
+  if (tagged) {
+    const hit = resolveStationKey(tagged[1]);
+    if (hit) return hit;
+  }
+
+  // URL 조각 등에서 고유번호(문자+숫자 4~8)만 허용 — A1 같은 짧은 우연 매칭 방지
+  const tokens = upper.match(/[A-Z][A-Z0-9]{3,7}/g) || [];
+  for (const t of tokens) {
+    const hit = resolveStationKey(t);
+    if (hit) return hit;
   }
   return null;
 }
@@ -83,10 +136,13 @@ function show(id, { tab } = {}) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("on"));
   $(id).classList.add("on");
   const shell = id === "v-home" || id === "v-settings";
-  const qr = id === "v-qr";
-  setTabbar(shell || qr);
-  if (shell || qr) setTabActive(tab || (id === "v-settings" ? "settings" : id === "v-qr" ? "qr" : "home"));
-  window.scrollTo(0, 0);
+  const immersive = id === "v-qr" || id === "v-code" || id === "v-map";
+  document.body.classList.toggle("qr-open", id === "v-qr");
+  document.body.classList.toggle("map-open", id === "v-map");
+  setTabbar(shell);
+  if (shell) setTabActive(tab || (id === "v-settings" ? "settings" : "home"));
+  else if (id === "v-qr") setTabActive("qr");
+  if (!immersive) window.scrollTo(0, 0);
 }
 
 function setMsg(text) {
@@ -99,7 +155,7 @@ function syncUserChrome() {
   $("setName").textContent = state.user.name;
   $("setSid").textContent = state.user.id;
   $("placeName").textContent = STATION_NAMES[state.station] || state.station;
-  $("placeCode").textContent = `대여소 코드 ${state.station}`;
+  $("placeCode").textContent = `대여소 코드 ${STATION_QR[state.station] || state.station}`;
 }
 
 function myRentalHere() {
@@ -198,6 +254,7 @@ function showAuth(which) {
 }
 
 async function logout() {
+  await closeQrCamera();
   try { await logoutUser(); } catch (_) {}
   Object.assign(state, {
     user: null, selected: null, openSlot: null, returning: false, busy: false, tab: "home",
@@ -366,11 +423,320 @@ function tick() {
   });
 }
 
+let qrToastTimer = null;
+let qrHandling = false;
+let qrConfirmKey = null;
+let qrConfirmCount = 0;
+
+function setQrHint(text) {
+  const el = $("qrHint");
+  if (el) el.textContent = text || "";
+}
+
+function syncTorchButton() {
+  const on = getTorchOn();
+  const btn = $("qrTorch");
+  const label = $("qrTorchLabel");
+  if (btn) {
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  if (label) label.textContent = on ? "라이트 끄기" : "라이트 켜기";
+}
+
+function hideQrToast() {
+  const t = $("qrToast");
+  if (!t) return;
+  t.classList.remove("show", "shake");
+}
+
+function showQrToast(message) {
+  const t = $("qrToast");
+  const msg = $("qrToastMsg");
+  if (!t || !msg) return;
+  msg.textContent = message;
+  t.classList.remove("shake", "show");
+  void t.offsetWidth;
+  t.classList.add("show", "shake");
+  if (qrToastTimer) clearTimeout(qrToastTimer);
+  qrToastTimer = setTimeout(() => {
+    t.classList.remove("show", "shake");
+  }, 2400);
+}
+
+function resetQrConfirm() {
+  qrConfirmKey = null;
+  qrConfirmCount = 0;
+}
+
+function hideQrSuccess() {
+  const box = $("qrSuccess");
+  if (!box) return;
+  box.classList.remove("is-on");
+  box.hidden = true;
+}
+
+async function showQrSuccess(station) {
+  const box = $("qrSuccess");
+  const text = $("qrSuccessText");
+  const label = STATION_NAMES[station] || station;
+  const qr = STATION_QR[station] || station;
+  if (text) text.textContent = `${label} · ${qr}`;
+  if (box) {
+    box.hidden = false;
+    box.classList.remove("is-on");
+    void box.offsetWidth;
+    box.classList.add("is-on");
+  }
+  await wait(850);
+  hideQrSuccess();
+}
+
+async function openQrCamera() {
+  hideQrToast();
+  hideQrSuccess();
+  resetQrConfirm();
+  $("qrRetryCam").hidden = true;
+  setQrHint("카메라를 준비하는 중…");
+  $("qrFrame").classList.remove("denied", "ready");
+  qrHandling = false;
+  syncTorchButton();
+
+  const res = await startQrScan({
+    video: $("qrVideo"),
+    onResult: handleQrPayload,
+    onError: (msg) => {
+      setQrHint(msg);
+      $("qrFrame").classList.add("denied");
+      $("qrRetryCam").hidden = false;
+      showQrToast(msg);
+    },
+  });
+  if (res.ok) {
+    $("qrFrame").classList.add("ready");
+    setQrHint("대여소 QR을 네모 안에 맞춰 주세요");
+  }
+  syncTorchButton();
+}
+
+async function closeQrCamera() {
+  qrHandling = false;
+  resetQrConfirm();
+  await stopQrScan();
+  hideQrToast();
+  hideQrSuccess();
+  syncTorchButton();
+}
+
+async function handleQrPayload(hit) {
+  if (qrHandling) return;
+  const raw = String((hit && hit.raw) || "").trim();
+  if (!raw) return;
+
+  const format = String((hit && hit.format) || "").toLowerCase();
+  if (format && format !== "qr_code") {
+    resetQrConfirm();
+    setScanCooldown(1400);
+    showQrToast("QR 코드만 인식할 수 있어요");
+    setQrHint("대여소 QR을 다시 비춰 주세요");
+    return;
+  }
+
+  const station = parseStationCode(raw);
+  if (!station) {
+    resetQrConfirm();
+    // 짧은 잡음/미완성 디코드는 무시, 의미 있는 페이로드만 에러
+    if (raw.replace(/\s+/g, "").length >= 4) {
+      setScanCooldown(1600);
+      showQrToast("등록되지 않은 보관함이에요");
+      setQrHint("올바른 대여소 QR인지 확인해 주세요");
+    }
+    return;
+  }
+
+  if (qrConfirmKey !== station) {
+    qrConfirmKey = station;
+    qrConfirmCount = 1;
+    setQrHint("인식 중… 조금 더 맞춰 주세요");
+    return;
+  }
+  qrConfirmCount += 1;
+  if (qrConfirmCount < QR_CONFIRM_HITS) {
+    setQrHint(`확인 중… (${qrConfirmCount}/${QR_CONFIRM_HITS})`);
+    return;
+  }
+
+  qrHandling = true;
+  setScanCooldown(5000);
+  hideQrToast();
+  setQrHint("인식 완료");
+  try {
+    await showQrSuccess(station);
+    await closeQrCamera();
+    await enterStation(station);
+  } finally {
+    qrHandling = false;
+    resetQrConfirm();
+  }
+}
+
+function openCodeEntry() {
+  closeQrCamera();
+  $("codeErr").textContent = "";
+  $("codeInput").value = "";
+  show("v-code");
+  setTimeout(() => $("codeInput").focus(), 80);
+}
+
+function submitCodeEntry() {
+  const raw = $("codeInput").value.trim();
+  $("codeErr").textContent = "";
+  if (!raw) {
+    $("codeErr").textContent = "코드를 입력해 주세요.";
+    return;
+  }
+  const station = parseStationCode(raw);
+  if (!station) {
+    $("codeErr").textContent = "잘못된 대여소 코드예요. 다시 확인해 주세요.";
+    const input = $("codeInput");
+    input.classList.remove("shake");
+    void input.offsetWidth;
+    input.classList.add("shake");
+    return;
+  }
+  enterStation(station);
+}
+
+let mapSheetStation = null;
+
+function resetMapSlotsPanel() {
+  const panel = $("mapSlotsPanel");
+  const box = $("mapSlots");
+  const btn = $("mapSlotsBtn");
+  if (panel) panel.classList.remove("is-open");
+  if (box) box.innerHTML = "";
+  if (btn) {
+    btn.textContent = "보관함 현황 보기";
+    btn.setAttribute("aria-expanded", "false");
+  }
+}
+
+function hideMapSheet() {
+  const sheet = $("mapSheet");
+  if (!sheet) return;
+  sheet.classList.remove("open");
+  sheet.hidden = true;
+  resetMapSlotsPanel();
+  mapSheetStation = null;
+  clearStationSelection();
+}
+
+async function openMapSheet(station) {
+  mapSheetStation = station;
+  selectStation(station.code, true);
+  $("mapStationName").textContent = station.name;
+  $("mapStationMeta").textContent = `코드 ${station.qr || station.code}`;
+  resetMapSlotsPanel();
+
+  const live = station.live !== false;
+  const stats = $("mapStats");
+  const planned = $("mapPlanned");
+  const goRent = $("mapGoRent");
+  const slotsBtn = $("mapSlotsBtn");
+
+  if (live) {
+    stats.hidden = false;
+    planned.hidden = true;
+    $("mapRentN").textContent = "…";
+    $("mapReturnN").textContent = "…";
+    goRent.disabled = false;
+    goRent.textContent = "이 대여소 QR 스캔";
+  } else {
+    stats.hidden = true;
+    planned.hidden = false;
+    goRent.disabled = true;
+    goRent.textContent = "추후 지원 예정";
+    slotsBtn.dataset.ready = "1";
+    slotsBtn._slotDetail = plannedSlotDetail();
+  }
+
+  const sheet = $("mapSheet");
+  sheet.hidden = false;
+  void sheet.offsetWidth;
+  sheet.classList.add("open");
+
+  if (!live) return;
+
+  try {
+    const inv = await getStationInventory(station.code);
+    const sum = summarizeSlots(inv.slots);
+    $("mapRentN").textContent = String(sum.rentable);
+    $("mapReturnN").textContent = String(sum.returnable);
+    slotsBtn.dataset.ready = "1";
+    slotsBtn._slotDetail = sum.detail;
+  } catch (e) {
+    $("mapRentN").textContent = "-";
+    $("mapReturnN").textContent = "-";
+    $("mapStationMeta").textContent = friendlyError(e);
+    slotsBtn.dataset.ready = "0";
+    slotsBtn._slotDetail = [];
+  }
+}
+
+function toggleMapSlots() {
+  const panel = $("mapSlotsPanel");
+  const box = $("mapSlots");
+  const btn = $("mapSlotsBtn");
+  if (!panel || !box || !btn) return;
+
+  if (panel.classList.contains("is-open")) {
+    panel.classList.remove("is-open");
+    btn.textContent = "보관함 현황 보기";
+    btn.setAttribute("aria-expanded", "false");
+    return;
+  }
+
+  const detail = btn._slotDetail || [];
+  if (!detail.length) {
+    box.innerHTML = `<div class="map-slot"><div class="t">현황을 불러오지 못했어요</div></div>`;
+  } else {
+    box.innerHTML = detail.map((d) => `
+      <div class="map-slot ${d.status}">
+        <div class="n">${d.slot}</div>
+        <div class="t">${d.label}</div>
+      </div>
+    `).join("");
+  }
+  // 레이아웃 한 프레임 잡힌 뒤 열어 슬라이드 애니메이션 시작
+  void panel.offsetHeight;
+  panel.classList.add("is-open");
+  btn.textContent = "현황 접기";
+  btn.setAttribute("aria-expanded", "true");
+}
+
+async function openCampusMap() {
+  closeQrCamera();
+  hideMapSheet();
+  show("v-map");
+  await initCampusMap($("mapCanvas"), {
+    onStationSelect: (station) => openMapSheet(station),
+  });
+  resizeCampusMap();
+}
+
 function goTab(tab) {
   if (!state.user) return;
-  if (tab === "home") show("v-home", { tab: "home" });
-  else if (tab === "qr") show("v-qr", { tab: "qr" });
-  else if (tab === "settings") {
+  if (tab === "home") {
+    closeQrCamera();
+    hideMapSheet();
+    show("v-home", { tab: "home" });
+  } else if (tab === "qr") {
+    hideMapSheet();
+    show("v-qr", { tab: "qr" });
+    openQrCamera();
+  } else if (tab === "settings") {
+    closeQrCamera();
+    hideMapSheet();
     syncUserChrome();
     show("v-settings", { tab: "settings" });
   }
@@ -392,10 +758,38 @@ $("settingsLogout").onclick = logout;
 $("tabHome").onclick = () => goTab("home");
 $("tabQr").onclick = () => goTab("qr");
 $("tabSettings").onclick = () => goTab("settings");
+$("homeRentBtn").onclick = () => goTab("qr");
+$("homeMapBtn").onclick = () => openCampusMap();
+$("mapBack").onclick = () => goTab("home");
+$("mapSheetClose").onclick = () => hideMapSheet();
+$("mapSlotsBtn").onclick = () => toggleMapSlots();
+$("mapGoRent").onclick = () => {
+  if (!mapSheetStation || mapSheetStation.live === false) return;
+  state.station = mapSheetStation.code;
+  goTab("qr");
+};
 $("qrBack").onclick = () => goTab("home");
-$("qrTempA1").onclick = () => enterStation("A1");
+$("qrRetryCam").onclick = () => openQrCamera();
+$("qrManual").onclick = openCodeEntry;
+$("qrTorch").onclick = async () => {
+  const next = !getTorchOn();
+  const ok = await setTorch(next);
+  syncTorchButton();
+  if (!ok) showQrToast("이 기기에서는 라이트를 켤 수 없어요");
+};
 
-$("placeBack").onclick = () => show("v-qr", { tab: "qr" });
+$("codeBack").onclick = () => goTab("qr");
+$("codeToQr").onclick = () => goTab("qr");
+$("codeSubmit").onclick = submitCodeEntry;
+$("codeInput").onkeydown = (e) => {
+  if (e.key === "Enter") submitCodeEntry();
+};
+$("codeInput").oninput = () => {
+  $("codeErr").textContent = "";
+  $("codeInput").value = $("codeInput").value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+};
+
+$("placeBack").onclick = () => goTab("qr");
 $("pickBack").onclick = () => show("v-place");
 $("placeHome").onclick = () => goTab("home");
 $("pickHome").onclick = () => goTab("home");
@@ -408,7 +802,12 @@ $("placeYes").onclick = async () => {
   render();
   show("v-pick");
 };
-$("placeNo").onclick = () => show("v-qr", { tab: "qr" });
+$("placeNo").onclick = () => goTab("qr");
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) closeQrCamera();
+  else if ($("v-qr").classList.contains("on") && state.user) openQrCamera();
+});
 
 $("go").onclick = go;
 $("tagBtn").onclick = async () => {

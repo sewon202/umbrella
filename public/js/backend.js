@@ -43,11 +43,18 @@ const DEVICE_KEY = "umbrella-device";
 const LOCAL_SESSION_KEY = "umbrella_local_session";
 const FB_SESSION_KEY = "umbrella_fb_session";
 
+/**
+ * code=내부키, qr=인쇄번호, lat/lng=현장 측정 좌표
+ * live=true 만 대여·반납 가능 (나머지는 추후 지원 예정)
+ */
 export const STATIONS = [
-  { code: "A1", name: "학생회관 정문" },
-  { code: "B2", name: "중앙도서관 출입구" },
-  { code: "C3", name: "형남공학관 2층 입구" },
+  { code: "A1", qr: "A7482", name: "학생회관 정문", lat: 37.49678, lng: 126.95683, live: false },
+  { code: "B2", qr: "B3916", name: "중앙도서관 출입구", lat: 37.49623, lng: 126.95845, live: false },
+  { code: "C3", qr: "C8605", name: "형남공학관 2층 입구", lat: 37.49580, lng: 126.95648, live: true },
 ];
+
+/** 세 핀 중심 — 실제 화면은 setBounds 로 맞춤 */
+export const CAMPUS_CENTER = { lat: 37.49627, lng: 126.95725, zoom: 17 };
 
 const isConfigured =
   fb.projectId && fb.projectId !== "YOUR_PROJECT_ID" &&

@@ -15,6 +15,12 @@ window.UMBRELLA = {
     appId: "1:551092351154:web:a84c844e64173aee0bd9ab",
     measurementId: "G-RE1CZ03B5P"
   },
+  // 카카오 개발자 콘솔 > 앱 > JavaScript 키
+  // SDK 도메인에 아래를 각각 등록 (localhost ≠ 127.0.0.1):
+  //   https://umbrella-c8cf0.web.app
+  //   http://localhost:3000
+  //   http://127.0.0.1:3000
+  kakaoMapAppKey: "849e1b3b73f4033abff2609124090bda",
   deviceEmail: "device@umbrella.local",
   devicePassword: "device-change-me"
 };
