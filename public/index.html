@@ -3,66 +3,189 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>우산 대여</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap">
-<link rel="stylesheet" href="/css/app.css">
+<title>숭실 우산 대여</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="/css/app.css?v=14">
 </head>
 <body>
 <main>
 
 <section class="view on" id="v-login">
-  <h1>우산 대여</h1>
-  <p>학생증 정보로 로그인하면 바로 빌릴 수 있어요.</p>
-  <div class="card">
-    <h2>로그인</h2>
+  <div class="brand">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <div class="brand-text">숭실 우산 대여</div>
+  </div>
+  <h1 class="hero-title">학번으로<br>바로 시작해요</h1>
+  <p class="hero-sub">로그인하면 가까운 보관함에서 우산을 빌릴 수 있어요.</p>
+
+  <div class="field">
     <label for="sid">학번</label>
     <input id="sid" inputmode="numeric" autocomplete="username" placeholder="예: 20240001">
+  </div>
+  <div class="field">
     <label for="pw">비밀번호</label>
-    <input id="pw" type="password" autocomplete="current-password">
-    <p class="err" id="loginErr" role="alert"></p>
-    <button class="btn" id="loginBtn">로그인</button>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="6~16자리" maxlength="16">
+  </div>
+  <p class="err" id="loginErr" role="alert"></p>
 
-    <hr class="divider">
+  <div class="stack-gap">
+    <button class="btn" id="loginBtn" type="button">로그인</button>
+    <p class="footer-link">처음인가요? <a href="#signup" id="goSignup">회원가입</a></p>
+  </div>
+</section>
 
-    <h2>간편 회원가입</h2>
+<section class="view" id="v-signup">
+  <div class="brand">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <div class="brand-text">숭실 우산 대여</div>
+  </div>
+  <h1 class="hero-title">회원가입</h1>
+  <p class="hero-sub">학번과 이름만 있으면 바로 이용할 수 있어요.</p>
+
+  <div class="field">
     <label for="joinSid">학번</label>
-    <input id="joinSid" inputmode="numeric" placeholder="학번 6~10자리">
+    <input id="joinSid" inputmode="numeric" autocomplete="username" placeholder="예: 20240001">
+  </div>
+  <div class="field">
     <label for="joinName">이름</label>
-    <input id="joinName" placeholder="이름 입력">
+    <input id="joinName" autocomplete="name" placeholder="이름">
+  </div>
+  <div class="field">
     <label for="joinPw">비밀번호</label>
-    <input id="joinPw" type="password" placeholder="6자 이상 비밀번호">
-    <p class="err" id="joinErr" role="alert"></p>
-    <button class="btn ghost" id="joinBtn">회원가입하기</button>
+    <input id="joinPw" type="password" autocomplete="new-password" placeholder="6~16자리" maxlength="16">
+  </div>
+  <div class="field">
+    <label for="joinPw2">비밀번호 확인</label>
+    <input id="joinPw2" type="password" autocomplete="new-password" placeholder="한 번 더 입력" maxlength="16">
+  </div>
+  <p class="err" id="joinErr" role="alert"></p>
+
+  <div class="stack-gap">
+    <button class="btn" id="joinBtn" type="button">가입하기</button>
+    <p class="footer-link">이미 계정이 있나요? <a href="#login" id="goLogin">로그인</a></p>
+  </div>
+</section>
+
+<section class="view" id="v-home">
+  <div class="brand">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <div class="brand-text">숭실 우산 대여</div>
+  </div>
+  <h1 class="hero-title"><span id="homeWho">안녕하세요</span></h1>
+  <p class="hero-sub">하단 QR 버튼으로 대여소 코드를 인식해 주세요.</p>
+  <div class="timer" id="homeTimer" hidden><div class="tl"></div><div class="tv"></div><div class="bar"><i></i></div><div class="ts"></div></div>
+  <div class="sheet home-card">
+    <p class="home-card-title">이용 방법</p>
+    <ol class="home-steps">
+      <li>대여소에 있는 QR을 스캔해요</li>
+      <li>보관함 번호를 골라 대여해요</li>
+      <li>사용한 뒤 같은 칸에 반납해요</li>
+    </ol>
+  </div>
+</section>
+
+<section class="view" id="v-qr">
+  <button type="button" class="nav-back" id="qrBack">← 홈으로</button>
+  <h1 class="hero-title">QR 스캔</h1>
+  <p class="hero-sub">대여소 QR을 화면 안에 맞춰 주세요.</p>
+  <div class="qr-frame" aria-hidden="true">
+    <div class="qr-viewfinder">
+      <span class="qr-corner tl"></span>
+      <span class="qr-corner tr"></span>
+      <span class="qr-corner bl"></span>
+      <span class="qr-corner br"></span>
+      <p class="qr-hint">카메라 연동 준비 중</p>
+    </div>
+  </div>
+  <div class="stack-gap">
+    <button class="btn" id="qrTempA1" type="button">임시 · 학생회관 정문으로</button>
+    <p class="footer-link">나중에 실제 카메라 QR 인식으로 연결돼요</p>
+  </div>
+</section>
+
+<section class="view" id="v-settings">
+  <div class="brand">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=14" alt="숭실대학교" width="76" height="32">
+    <div class="brand-text">설정</div>
+  </div>
+  <div class="sheet settings-list">
+    <div class="settings-row">
+      <span>이름</span>
+      <strong id="setName">-</strong>
+    </div>
+    <div class="settings-row">
+      <span>학번</span>
+      <strong id="setSid">-</strong>
+    </div>
+  </div>
+  <div class="stack-gap">
+    <button class="btn ghost" id="settingsLogout" type="button">로그아웃</button>
   </div>
 </section>
 
 <section class="view" id="v-place">
-  <div class="top"><span id="who1"></span><button class="logout">로그아웃</button></div>
-  <div class="timer card" hidden><div class="tl"></div><div class="tv"></div><div class="bar"><i></i></div><div class="ts"></div></div>
-  <p>QR로 연결된 장소를 확인해 주세요.</p>
-  <div class="card">
+  <div class="top-nav">
+    <button type="button" class="nav-back" id="placeBack">← 돌아가기</button>
+    <button type="button" class="nav-home" id="placeHome">홈</button>
+  </div>
+  <div class="timer" hidden><div class="tl"></div><div class="tv"></div><div class="bar"><i></i></div><div class="ts"></div></div>
+  <h1 class="hero-title">이 장소가<br>맞나요?</h1>
+  <p class="hero-sub">QR로 연결된 대여소를 확인해 주세요.</p>
+  <div class="sheet">
     <div class="place" id="placeName"></div>
-    <p id="placeCode"></p>
-    <button class="btn" id="placeYes">맞아요, 여기예요</button>
-    <button class="btn ghost" id="placeNo">장소가 달라요</button>
+    <p class="place-meta" id="placeCode"></p>
+    <button class="btn" id="placeYes" type="button">맞아요, 여기예요</button>
+    <button class="btn ghost" id="placeNo" type="button" style="margin-top:10px">다시 스캔할게요</button>
     <p class="err" id="placeErr"></p>
   </div>
 </section>
 
-<section class="view" id="v-pick">
-  <div class="top"><span id="who2"></span><button class="logout">로그아웃</button></div>
-  <div class="timer card" hidden><div class="tl"></div><div class="tv"></div><div class="bar"><i></i></div><div class="ts"></div></div>
-  <h2 id="pickTitle"></h2>
-  <p id="pickDesc"></p>
-  <div class="cab" id="cab"></div>
+<section class="view pick-view" id="v-pick">
+  <div class="top-nav">
+    <button type="button" class="nav-back" id="pickBack">← 대여소 확인</button>
+    <button type="button" class="nav-home" id="pickHome">홈</button>
+  </div>
+  <div class="pick-timer-slot">
+    <div class="timer timer-compact" hidden>
+      <div class="timer-compact-row">
+        <span class="tl"></span>
+        <span class="tv"></span>
+      </div>
+      <div class="bar"><i></i></div>
+      <div class="ts"></div>
+    </div>
+  </div>
+  <div class="pick-head">
+    <h2 class="section-title" id="pickTitle"></h2>
+    <p class="section-desc" id="pickDesc"></p>
+  </div>
+  <div class="pick-stage">
+    <div class="cab" id="cab"></div>
+  </div>
   <p class="msg" id="msg" aria-live="polite"></p>
-  <button class="btn" id="go" disabled></button>
-  <button class="btn ghost" id="tagBtn" hidden>우산을 넣고 문을 닫았어요</button>
+  <div class="stack-gap pick-actions">
+    <button class="btn" id="go" type="button" disabled>번호를 선택해 주세요</button>
+    <button class="btn ghost" id="tagBtn" type="button" hidden>우산을 넣고 문을 닫았어요</button>
+  </div>
 </section>
 
 </main>
+
+<nav class="tabbar" id="tabbar" hidden>
+  <button type="button" class="tab" data-tab="home" id="tabHome">
+    <span class="tab-ico" aria-hidden="true">⌂</span>
+    <span>홈</span>
+  </button>
+  <button type="button" class="tab tab-qr" data-tab="qr" id="tabQr" aria-label="QR 스캔">
+    <span class="tab-qr-btn">QR</span>
+  </button>
+  <button type="button" class="tab" data-tab="settings" id="tabSettings">
+    <span class="tab-ico" aria-hidden="true">⚙</span>
+    <span>설정</span>
+  </button>
+</nav>
+
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js"></script>
+<script type="module" src="/js/app.js?v=14"></script>
 </body>
 </html>

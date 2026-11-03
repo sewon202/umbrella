@@ -79,6 +79,7 @@ function localBackend() {
     next: () => call("GET", `/api/device/next?station=${STATION}&key=${DEVICE_KEY}`),
     done: (id) => call("POST", `/api/device/commands/${id}/done`),
     event: (p) => call("POST", "/api/device/event", p),
+    presence: (p) => call("POST", "/api/device/presence", { station: STATION, link: "wired", ...p }),
   };
 }
 
@@ -126,6 +127,16 @@ async function firebaseBackend(cfg) {
           tag_uid: String(p.payload.uid).toUpperCase(), updated_at: Date.now(),
         }, { merge: true });
       }
+    },
+    async presence({ mcu_ok }) {
+      await setDoc(doc(db, "stations", STATION), {
+        code: STATION,
+        last_seen: Date.now(),
+        link: "wired",
+        mcu_ok: !!mcu_ok,
+        wifi_rssi: null,
+        wifi_ip: null,
+      }, { merge: true });
     },
   };
 }
@@ -204,10 +215,14 @@ async function main() {
 
   setInterval(async () => {
     if (pending) return;
-    if (lastPong && Date.now() - lastPong > PING_MS * 4) {
+    const mcuOk = !!(lastPong && Date.now() - lastPong <= PING_MS * 4);
+    if (lastPong && !mcuOk) {
       console.warn("[warn] MCU 응답 없음 — USB/스케치 확인");
     }
     try {
+      if (api.presence) {
+        await api.presence({ mcu_ok: mcuOk });
+      }
       const body = await api.next();
       if (!body || !body.has) return;
       pending = {

@@ -5,14 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>장치 테스트 · Umbrella</title>
 <link rel="stylesheet" href="/css/admin.css">
+<style>
+  .status-card{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  .status-dot{width:14px;height:14px;border-radius:50%;background:#9aa;flex-shrink:0}
+  .status-dot.on{background:#2E7D32;box-shadow:0 0 0 4px #E3F2E8}
+  .status-dot.off{background:#B3261E;box-shadow:0 0 0 4px #FDECEA}
+  .status-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;margin:0}
+  .status-meta dt{color:#667;font-weight:600}
+  .status-meta dd{margin:0}
+  .link-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:#e8eef5;color:#234}
+  .link-pill.wifi{background:#E3F2FD;color:#0D47A1}
+  .link-pill.wired{background:#FFF3E0;color:#E65100}
+</style>
 </head>
 <body>
   <h1>장치 / 명령 테스트</h1>
   <p class="muted">
-    로그인 없이 슬롯 open 명령을 넣어요.<br>
-    <b>유선:</b> USB 연결 후 PC에서 <code>npm run bridge</code> (Firebase면 <code>npm run bridge:firebase</code>)<br>
-    <b>무선:</b> 로컬 서버일 때 보드가 WiFi로 <code>/api/device/next</code> 폴링
+    device 계정으로 로그인 후 슬롯 open 명령을 Firestore에 넣어요.<br>
+    <b>무선(기본):</b> 보드에 WiFi SSID를 넣고 스케치를 업로드하면 Firestore를 직접 폴링합니다.<br>
+    <b>유선 백업:</b> 시리얼 모니터를 닫은 뒤 <code>npm run bridge:firebase</code> (모니터가 포트를 점유하면 브리지가 실패합니다)
   </p>
+
+  <div class="card">
+    <h2>보드 통신 상태</h2>
+    <div class="status-card">
+      <div class="status-dot off" id="statusDot" title="offline"></div>
+      <div>
+        <div id="statusLabel" style="font-weight:800;font-size:16px">확인 중…</div>
+        <div id="statusHint" class="muted" style="font-size:13px;margin-top:2px">하트비트 대기</div>
+      </div>
+      <dl class="status-meta" style="flex:1;min-width:220px">
+        <dt>station</dt><dd id="stStation">—</dd>
+        <dt>링크</dt><dd id="stLink">—</dd>
+        <dt>마지막 신호</dt><dd id="stAge">—</dd>
+        <dt>WiFi</dt><dd id="stWifi">—</dd>
+        <dt>MCU</dt><dd id="stMcu">—</dd>
+      </dl>
+    </div>
+  </div>
 
   <div class="card">
     <div class="row">
@@ -45,7 +75,7 @@
 <script src="/firebase-config.js"></script>
 <script type="module">
 import {
-  getMode, loginDevice, openDoor, health, debugRecent, friendlyError,
+  getMode, loginDevice, openDoor, health, debugRecent, getDevicePresence, friendlyError,
   STATIONS, MAX_HW_SLOT,
 } from "/js/backend.js";
 
@@ -60,13 +90,71 @@ async function ensureAuth() {
   authed = true;
 }
 
+function fmtAge(ms) {
+  if (ms == null) return "신호 없음";
+  if (ms < 1000) return "방금";
+  if (ms < 60000) return `${Math.round(ms / 1000)}초 전`;
+  if (ms < 3600000) return `${Math.round(ms / 60000)}분 전`;
+  return `${Math.round(ms / 3600000)}시간 전`;
+}
+
+function renderPresence(p) {
+  const online = !!(p && p.online);
+  $("statusDot").className = "status-dot " + (online ? "on" : "off");
+  $("statusLabel").textContent = online ? "온라인 · 통신 정상" : "오프라인 · 신호 없음";
+  $("statusLabel").className = online ? "ok" : "err";
+  $("statusLabel").style.fontWeight = "800";
+  $("statusLabel").style.fontSize = "16px";
+
+  if (!p || !p.last_seen) {
+    $("statusHint").textContent = "보드가 WiFi 폴링 중이거나 브리지가 켜져 있으면 여기에 표시됩니다. 스케치를 최신으로 업로드했는지 확인하세요.";
+  } else if (online) {
+    $("statusHint").textContent = p.link === "wired"
+      ? "USB 브리지로 연결되어 있어요."
+      : "보드가 Firestore에 직접 접속 중이에요.";
+  } else {
+    $("statusHint").textContent = "마지막 하트비트가 오래됐어요. WiFi/전원/브리지를 확인하세요.";
+  }
+
+  $("stStation").textContent = (p && p.station) || $("station").value;
+  const link = (p && p.link) || null;
+  if (link === "wifi") {
+    $("stLink").innerHTML = `<span class="link-pill wifi">WiFi</span>`;
+  } else if (link === "wired") {
+    $("stLink").innerHTML = `<span class="link-pill wired">USB 브리지</span>`;
+  } else {
+    $("stLink").textContent = "—";
+  }
+  $("stAge").textContent = p && p.last_seen
+    ? `${fmtAge(p.age_ms)} (${new Date(p.last_seen).toLocaleTimeString()})`
+    : "—";
+  if (p && p.link === "wifi") {
+    const rssi = p.wifi_rssi != null ? `${p.wifi_rssi} dBm` : "?";
+    const ip = p.wifi_ip || "?";
+    $("stWifi").textContent = `${ip} · ${rssi}`;
+  } else {
+    $("stWifi").textContent = link === "wired" ? "(유선 모드)" : "—";
+  }
+  if (!p || p.mcu_ok == null) $("stMcu").textContent = "—";
+  else $("stMcu").innerHTML = p.mcu_ok
+    ? `<span class="ok">응답 있음</span>`
+    : `<span class="err">응답 없음</span>`;
+}
+
 async function refresh() {
   try {
-    const [h, r] = await Promise.all([health(), debugRecent()]);
+    const station = $("station").value;
+    const [h, r, presence] = await Promise.all([
+      health(),
+      debugRecent(),
+      getDevicePresence(station),
+    ]);
     $("health").textContent = JSON.stringify({ mode: getMode(), ...h }, null, 2);
     $("recent").textContent = JSON.stringify(r, null, 2);
+    renderPresence(presence);
   } catch (e) {
     $("health").textContent = friendlyError(e);
+    renderPresence(null);
   }
 }
 
@@ -87,11 +175,12 @@ $("btnOpen").onclick = async () => {
   }
 };
 $("btnRefresh").onclick = refresh;
+$("station").onchange = refresh;
 
 (async () => {
   try { await ensureAuth(); } catch (e) { $("msg").textContent = friendlyError(e); }
   refresh();
-  setInterval(refresh, (window.UMBRELLA?.cost?.uiRefreshMs) || 10000);
+  setInterval(refresh, (window.UMBRELLA?.cost?.uiRefreshMs) || 5000);
 })();
 </script>
 </body>

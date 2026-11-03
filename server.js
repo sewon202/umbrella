@@ -199,7 +199,9 @@ app.post("/api/signup", (req, res) => {
   const { studentId, name, password } = req.body || {};
   if (!/^\d{6,10}$/.test(studentId || "")) return bad(res, "학번은 숫자 6~10자리로 입력해 주세요.");
   if (!name || !name.trim() || name.length > 20) return bad(res, "이름을 입력해 주세요.");
-  if (!password || password.length < 6) return bad(res, "비밀번호는 6자 이상이어야 해요.");
+  if (!password || password.length < 6 || password.length > 16) {
+    return bad(res, "비밀번호는 6~16자리로 입력해 주세요.");
+  }
   if (q.studentExists.get(studentId)) return bad(res, "이미 가입된 학번이에요.", 409);
   q.insertStudent.run(studentId, name.trim(), hashPw(password), Date.now());
   res.status(201).json({ ok: true });
@@ -262,7 +264,7 @@ app.post("/api/rent", (req, res) => {
   }
 });
 
-// 반납: 내 활성 대여와 일치할 때만
+// 반납: 활성 대여가 있으면 비어 있는 칸(out) 어디에나 반납
 app.post("/api/return", (req, res) => {
   const station = toStation(req.body && req.body.station);
   const slot = toSlot(req.body && req.body.slot);
@@ -270,8 +272,10 @@ app.post("/api/return", (req, res) => {
   if (!assertSlot(res, slot)) return;
 
   const active = q.activeRental.get(studentId);
-  if (!active || active.station !== station || active.slot !== slot) {
-    return bad(res, "반납할 대여 정보가 맞지 않아요.", 409);
+  if (!active) return bad(res, "반납할 대여 정보가 없어요.", 409);
+  const u = q.umbrellaAt.get(station, slot);
+  if (!u || u.status !== "out") {
+    return bad(res, "그 칸에는 이미 우산이 있어요. 비어 있는 칸에만 반납할 수 있어요.", 409);
   }
   const now = Date.now();
   db.exec("BEGIN");
@@ -354,6 +358,36 @@ app.post("/api/device/event", requireDeviceKey, (req, res) => {
   }
   res.json({ ok: true, id: Number(info.lastInsertRowid) });
 });
+
+/** 아두이노/브리지 하트비트 (메모리) */
+const devicePresence = Object.create(null);
+app.post("/api/device/presence", requireDeviceKey, (req, res) => {
+  const station = toStation((req.body && req.body.station) || "A1");
+  const now = Date.now();
+  devicePresence[station] = {
+    code: station,
+    last_seen: now,
+    link: String((req.body && req.body.link) || "wired"),
+    mcu_ok: !!(req.body && req.body.mcu_ok),
+    wifi_rssi: req.body && req.body.wifi_rssi != null ? Number(req.body.wifi_rssi) : null,
+    wifi_ip: (req.body && req.body.wifi_ip) || null,
+  };
+  res.json({ ok: true, station });
+});
+app.get("/api/device/presence", (req, res) => {
+  const station = toStation(req.query.station || "A1");
+  const row = devicePresence[station] || null;
+  const ONLINE_MS = 20000;
+  res.json({
+    station,
+    online: !!(row && row.last_seen && nowFresh(row.last_seen, ONLINE_MS)),
+    age_ms: row && row.last_seen ? Date.now() - row.last_seen : null,
+    ...row,
+  });
+});
+function nowFresh(ts, ms) {
+  return Date.now() - Number(ts) <= ms;
+}
 
 app.get("/api/debug/recent", (_req, res) => {
   res.json({

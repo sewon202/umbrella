@@ -11,6 +11,9 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
   getFirestore,
@@ -34,7 +37,11 @@ const fb = cfg.firebase || {};
 export const MAX_HW_SLOT = (cfg.cost && cfg.cost.maxHwSlot) || 2;
 export const TOTAL_SLOTS = 6;
 export const RENT_LIMIT_MS = 48 * 3600 * 1000;
+/** 새로고침 후 로그인 유지 (약 20분) */
+export const SESSION_MS = 20 * 60 * 1000;
 const DEVICE_KEY = "umbrella-device";
+const LOCAL_SESSION_KEY = "umbrella_local_session";
+const FB_SESSION_KEY = "umbrella_fb_session";
 
 export const STATIONS = [
   { code: "A1", name: "학생회관 정문" },
@@ -60,6 +67,15 @@ function assertSlot(slot) {
   if (!Number.isInteger(slot) || slot < 1 || slot > MAX_HW_SLOT) {
     throw new Error(`지금은 슬롯 1~${MAX_HW_SLOT}만 사용할 수 있어요.`);
   }
+}
+
+/** 비밀번호 6~16자 */
+export function validatePassword(password) {
+  const pw = String(password || "");
+  if (pw.length < 6 || pw.length > 16) {
+    throw new Error("비밀번호는 6~16자리로 입력해 주세요.");
+  }
+  return pw;
 }
 
 /** 슬롯 상태 맵 기본값: HW 슬롯은 in, 나머지는 prep */
@@ -93,13 +109,45 @@ function createLocalBackend() {
 
   return {
     mode: "local",
-    async signup(p) { return api("POST", "/api/signup", p); },
+    async signup(p) {
+      validatePassword(p.password);
+      return api("POST", "/api/signup", p);
+    },
     async login({ studentId, password }) {
       const r = await api("POST", "/api/login", { studentId, password });
-      return { studentId, name: r.name, uid: studentId, activeRental: r.activeRental || null };
+      const user = {
+        studentId, name: r.name, uid: studentId,
+        activeRental: r.activeRental || null,
+      };
+      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({
+        token: r.token, ...user, exp: Date.now() + SESSION_MS,
+      }));
+      return user;
+    },
+    async restoreSession() {
+      try {
+        const raw = localStorage.getItem(LOCAL_SESSION_KEY);
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        if (!s.token || !s.exp || s.exp < Date.now()) {
+          localStorage.removeItem(LOCAL_SESSION_KEY);
+          return null;
+        }
+        await api("GET", "/api/me", null, { Authorization: `Bearer ${s.token}` });
+        let activeRental = null;
+        try {
+          activeRental = (await api("GET", `/api/students/${s.studentId}/rental`)).activeRental || null;
+        } catch (_) {}
+        return {
+          studentId: s.studentId, name: s.name, uid: s.uid || s.studentId, activeRental,
+        };
+      } catch (_) {
+        localStorage.removeItem(LOCAL_SESSION_KEY);
+        return null;
+      }
     },
     async loginDevice() { return { ok: true }; },
-    async logout() {},
+    async logout() { localStorage.removeItem(LOCAL_SESSION_KEY); },
     async getStationInventory(station) {
       const r = await api("GET", `/api/station/${station}`);
       return { station, slots: applyRows(emptySlots(), r.slots), rows: r.slots || [] };
@@ -130,6 +178,9 @@ function createLocalBackend() {
     },
     async markCommandDone(id) { return api("POST", `/api/device/commands/${id}/done`, null, dev); },
     async postDeviceEvent(p) { return api("POST", "/api/device/event", p, dev); },
+    async getDevicePresence(station = "A1") {
+      return api("GET", `/api/device/presence?station=${station}`);
+    },
     async debugRecent() { return api("GET", "/api/debug/recent"); },
     async health() { return api("GET", "/api/health"); },
   };
@@ -140,12 +191,28 @@ function createFirebaseBackend() {
   const app = initializeApp(fb);
   const auth = getAuth(app);
   const db = getFirestore(app);
+  // 브라우저에 로그인 유지 (새로고침해도 Auth 세션 유지)
+  setPersistence(auth, browserLocalPersistence).catch(() => {});
 
   const requireUser = () => {
     if (!auth.currentUser) throw new Error("로그인이 필요해요.");
     return auth.currentUser;
   };
   const docData = (d) => ({ id: d.id, ...d.data() });
+  const deviceEmail = (cfg.deviceEmail || "device@umbrella.local").toLowerCase();
+
+  async function userFromAuth(user) {
+    if (!user) return null;
+    if ((user.email || "").toLowerCase() === deviceEmail) return null; // device 계정은 앱 로그인으로 취급 안 함
+    const snap = await getDoc(doc(db, "students", user.uid));
+    const data = snap.exists() ? snap.data() : {};
+    return {
+      studentId: data.studentId || String(user.email || "").split("@")[0],
+      name: data.name || user.displayName || "학생",
+      uid: user.uid,
+      activeRental: data.activeRental || null,
+    };
+  }
 
   async function pendingCommands(station) {
     const q = query(
@@ -172,6 +239,7 @@ function createFirebaseBackend() {
     mode: "firebase",
 
     async signup({ studentId, name, password }) {
+      validatePassword(password);
       const cred = await createUserWithEmailAndPassword(auth, studentEmail(studentId), password);
       await updateProfile(cred.user, { displayName: name });
       await setDoc(doc(db, "students", cred.user.uid), {
@@ -183,14 +251,40 @@ function createFirebaseBackend() {
 
     async login({ studentId, password }) {
       const cred = await signInWithEmailAndPassword(auth, studentEmail(studentId), password);
-      const snap = await getDoc(doc(db, "students", cred.user.uid));
-      const data = snap.exists() ? snap.data() : {};
-      return {
-        studentId: data.studentId || studentId,
-        name: data.name || cred.user.displayName || studentId,
-        uid: cred.user.uid,
-        activeRental: data.activeRental || null,
-      };
+      localStorage.setItem(FB_SESSION_KEY, JSON.stringify({ exp: Date.now() + SESSION_MS }));
+      return userFromAuth(cred.user);
+    },
+
+    /** 새로고침 후 Firebase Auth 세션 복구 (SESSION_MS 이내만) */
+    async restoreSession() {
+      return new Promise((resolve) => {
+        const unsub = onAuthStateChanged(auth, async (user) => {
+          unsub();
+          try {
+            if (!user) {
+              localStorage.removeItem(FB_SESSION_KEY);
+              resolve(null);
+              return;
+            }
+            let exp = 0;
+            try {
+              const raw = localStorage.getItem(FB_SESSION_KEY);
+              exp = raw ? JSON.parse(raw).exp || 0 : 0;
+            } catch (_) {
+              exp = 0;
+            }
+            if (!exp || exp < Date.now()) {
+              localStorage.removeItem(FB_SESSION_KEY);
+              await signOut(auth).catch(() => {});
+              resolve(null);
+              return;
+            }
+            resolve(await userFromAuth(user));
+          } catch (_) {
+            resolve(null);
+          }
+        });
+      });
     },
 
     async loginDevice() {
@@ -201,7 +295,10 @@ function createFirebaseBackend() {
       return { ok: true, email };
     },
 
-    async logout() { await signOut(auth); },
+    async logout() {
+      localStorage.removeItem(FB_SESSION_KEY);
+      await signOut(auth);
+    },
 
     async getStationInventory(station) {
       const snap = await getDocs(query(collection(db, "umbrellas"), where("station", "==", station)));
@@ -249,7 +346,7 @@ function createFirebaseBackend() {
       return { ok: true, id: cmdId, rentalId: rRef.id, station, slot, rented_at: now, due_at };
     },
 
-    /** 반납: 내 활성 대여와 일치할 때만 처리 */
+    /** 반납: 활성 대여가 있으면 비어 있는 칸(out) 어디에나 반납 */
     async return({ station, slot, studentId }) {
       assertSlot(slot);
       const user = requireUser();
@@ -258,17 +355,21 @@ function createFirebaseBackend() {
       const uRef = doc(db, "umbrellas", umbrellaId(station, slot));
 
       const cmdId = await runTransaction(db, async (tx) => {
-        const sSnap = await tx.get(sRef);
+        const [sSnap, uSnap] = await Promise.all([tx.get(sRef), tx.get(uRef)]);
         const active = sSnap.exists() ? sSnap.data().activeRental : null;
-        if (!active || active.slot !== slot || active.station !== station) {
-          throw new Error("반납할 대여 정보가 맞지 않아요.");
+        if (!active) throw new Error("반납할 대여 정보가 없어요.");
+        const u = uSnap.exists() ? uSnap.data() : {};
+        if (u.status !== "out") {
+          throw new Error("그 칸에는 이미 우산이 있어요. 비어 있는 칸에만 반납할 수 있어요.");
         }
         tx.set(uRef, {
           station, slot, status: "in",
           rented_by: null, rented_at: null, updated_at: now,
         }, { merge: true });
         if (active.rentalId) {
-          tx.update(doc(db, "rentals", active.rentalId), { returned_at: now, status: "returned" });
+          tx.update(doc(db, "rentals", active.rentalId), {
+            returned_at: now, status: "returned", return_station: station, return_slot: slot,
+          });
         }
         tx.set(sRef, { activeRental: null, updated_at: now }, { merge: true });
         return newCommand(tx, { station, slot, studentId, action: "open", now });
@@ -357,6 +458,28 @@ function createFirebaseBackend() {
       return { ok: true, id: ref.id };
     },
 
+    async getDevicePresence(station = "A1") {
+      const ONLINE_MS = 20000; // 폴링 ~4초 기준, 20초 지나면 오프라인
+      const snap = await getDoc(doc(db, "stations", station));
+      if (!snap.exists()) {
+        return { station, online: false, age_ms: null, last_seen: null, link: null, mcu_ok: false };
+      }
+      const data = snap.data() || {};
+      const last = Number(data.last_seen) || 0;
+      const age = last ? Date.now() - last : null;
+      return {
+        station,
+        online: !!(last && age != null && age <= ONLINE_MS),
+        age_ms: age,
+        last_seen: last || null,
+        link: data.link || null,
+        mcu_ok: data.mcu_ok !== false,
+        wifi_rssi: data.wifi_rssi ?? null,
+        wifi_ip: data.wifi_ip || null,
+        name: data.name || null,
+      };
+    },
+
     async debugRecent() {
       const [cmds, evs, umbs] = await Promise.all([
         getDocs(query(collection(db, "commands"), orderBy("created_at", "desc"), limit(10))),
@@ -382,6 +505,7 @@ export const backend = mode === "firebase" ? createFirebaseBackend() : createLoc
 
 export const signup = (p) => backend.signup(p);
 export const login = (p) => backend.login(p);
+export const restoreSession = () => backend.restoreSession();
 export const loginDevice = () => backend.loginDevice();
 export const logoutUser = () => backend.logout();
 export const getStationInventory = (s) => backend.getStationInventory(s);
@@ -397,6 +521,7 @@ export const seedInventory = () => backend.seedInventory();
 export const fetchNextCommand = (s) => backend.fetchNextCommand(s);
 export const markCommandDone = (id) => backend.markCommandDone(id);
 export const postDeviceEvent = (p) => backend.postDeviceEvent(p);
+export const getDevicePresence = (s) => backend.getDevicePresence(s);
 export const debugRecent = () => backend.debugRecent();
 export const health = () => backend.health();
 
@@ -405,7 +530,7 @@ export function friendlyError(e) {
   const msg = String((e && e.message) || e || "");
   if (/invalid-credential|user-not-found|wrong-password/i.test(msg)) return "학번 또는 비밀번호가 맞지 않아요.";
   if (/email-already-in-use/i.test(msg)) return "이미 가입된 학번이에요.";
-  if (/weak-password/i.test(msg)) return "비밀번호는 6자 이상이어야 해요.";
+  if (/weak-password/i.test(msg)) return "비밀번호는 6~16자리로 입력해 주세요.";
   if (/invalid-email/i.test(msg)) return "학번 형식을 확인해 주세요.";
   if (/invalid-api-key|YOUR_API_KEY/i.test(msg)) return "firebase-config.js 설정을 확인해 주세요.";
   if (/permission-denied|Missing or insufficient permissions/i.test(msg)) return "권한이 없어요. 로그인 상태를 확인해 주세요.";

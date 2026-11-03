@@ -2,57 +2,13 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>우산 대여 회원가입</title>
-<link rel="stylesheet" href="/css/app.css">
-<style>
-#msg{min-height:22px;margin:12px 0 0;font-size:14px;font-weight:700}
-#msg.err{color:var(--err)}#msg.ok{color:var(--ok)}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>회원가입 · 숭실 우산 대여</title>
+<meta http-equiv="refresh" content="0;url=/#signup">
+<link rel="canonical" href="/#signup">
+<script>location.replace("/#signup");</script>
 </head>
 <body>
-<main>
-  <h1>회원가입</h1>
-  <p>학번과 이름으로 가입하면 우산을 빌릴 수 있어요.</p>
-  <div class="card">
-    <label for="sid">학번</label>
-    <input id="sid" inputmode="numeric" autocomplete="username" placeholder="예: 20240001">
-    <label for="nm">이름</label>
-    <input id="nm" autocomplete="name">
-    <label for="pw">비밀번호 (6자 이상)</label>
-    <input id="pw" type="password" autocomplete="new-password">
-    <label for="pw2">비밀번호 확인</label>
-    <input id="pw2" type="password" autocomplete="new-password">
-    <p id="msg" role="alert"></p>
-    <button class="btn" id="btn">가입하기</button>
-    <a class="btn ghost" href="/" style="display:block;text-align:center;text-decoration:none">로그인으로</a>
-  </div>
-</main>
-<script src="/firebase-config.js"></script>
-<script type="module">
-import { signup, friendlyError } from "/js/backend.js";
-const $ = (id) => document.getElementById(id);
-const say = (t, c) => { $("msg").textContent = t; $("msg").className = c || ""; };
-
-$("btn").onclick = async () => {
-  const studentId = $("sid").value.trim();
-  const name = $("nm").value.trim();
-  const password = $("pw").value;
-  if (!/^\d{6,10}$/.test(studentId)) return say("학번은 숫자 6~10자리로 입력해 주세요.", "err");
-  if (!name) return say("이름을 입력해 주세요.", "err");
-  if (password.length < 6) return say("비밀번호는 6자 이상이어야 해요.", "err");
-  if (password !== $("pw2").value) return say("비밀번호가 서로 달라요.", "err");
-
-  $("btn").disabled = true;
-  say("가입 중이에요…");
-  try {
-    await signup({ studentId, name, password });
-    say("가입이 완료됐어요. 이제 로그인할 수 있어요.", "ok");
-  } catch (e) {
-    say(friendlyError(e), "err");
-  }
-  $("btn").disabled = false;
-};
-</script>
+  <p style="font-family:sans-serif;padding:24px;color:#667">회원가입으로 이동 중… <a href="/#signup">여기를 눌러 주세요</a></p>
 </body>
 </html>
