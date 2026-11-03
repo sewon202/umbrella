@@ -16,7 +16,7 @@ import {
   RENT_LIMIT_MS,
   STATIONS,
 } from "/js/backend.js";
-import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn } from "/js/qr-scan.js?v=46";
+import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn } from "/js/qr-scan.js?v=47";
 import {
   initCampusMap,
   selectStation,
@@ -25,7 +25,7 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=45";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=47";
 
 initUiScale();
 
