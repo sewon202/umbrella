@@ -580,11 +580,13 @@ async function playReturnSuccessBanner(slot, rentalSnap) {
   if (bar) bar.style.width = "100%";
 
   slotEl.classList.remove("is-leaving");
+  // 레이아웃 자리 + 페이드인 (제목은 타이머 아래)
   slotEl.classList.add("has-timer");
   void slotEl.offsetWidth;
 
   await wait(RETURN_BANNER_MS);
 
+  // 타이머·여백이 같이 접히며 제목·본문이 원위치로 상승
   slotEl.classList.add("is-leaving");
   await wait(780);
 

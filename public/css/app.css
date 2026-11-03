@@ -393,44 +393,49 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 }
 .ts { font-size: 12px; font-weight: 600; opacity: 0.9; }
 
-/* 대여함 화면: 타이머는 오버레이 → 중앙 보관함 위치 고정 */
+/* 대여함 화면: 타이머가 제목 위에 자리를 잡고, 사라질 때 제목·본문이 같이 올라옴 */
 .pick-view {
   position: relative;
   min-height: 0;
   flex: 1;
 }
 .pick-timer-slot {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 44px; /* top-nav 아래 */
-  z-index: 5;
+  display: grid;
+  grid-template-rows: 0fr;
   margin: 0;
-  padding: 0;
-  pointer-events: none;
-  transform: translate3d(0, -18px, 0);
-  opacity: 0;
+  overflow: hidden;
   transition:
-    transform 0.75s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+    grid-template-rows 0.75s cubic-bezier(0.16, 1, 0.3, 1),
+    margin-bottom 0.75s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pick-timer-slot.has-timer {
-  transform: translate3d(0, 0, 0);
-  opacity: 1;
-  pointer-events: auto;
+  grid-template-rows: 1fr;
+  margin-bottom: 14px;
 }
 .pick-timer-slot.is-leaving {
-  transform: translate3d(0, -128%, 0);
-  opacity: 0;
-  pointer-events: none;
+  grid-template-rows: 0fr;
+  margin-bottom: 0;
 }
 .pick-timer-slot > .timer-slot-inner {
-  overflow: visible;
+  min-height: 0;
+  overflow: hidden;
 }
 .pick-timer-slot .timer {
   width: 100%;
   margin: 0;
-  box-shadow: 0 10px 28px rgba(25, 31, 40, 0.16);
+  transform: translate3d(0, -12px, 0);
+  opacity: 0;
+  transition:
+    transform 0.75s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pick-timer-slot.has-timer .timer {
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+}
+.pick-timer-slot.is-leaving .timer {
+  transform: translate3d(0, -100%, 0);
+  opacity: 0;
 }
 .timer-compact {
   padding: 10px 14px 8px;
@@ -475,15 +480,16 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   font-weight: 800;
 }
 .pick-head {
-  margin-top: 4px;
+  margin-top: 0;
   flex-shrink: 0;
+  transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pick-head .section-title { margin-bottom: 2px; }
 .pick-head .section-desc { margin-bottom: 0; }
 .pick-stage {
   flex: 1 1 auto;
   position: relative;
-  min-height: 220px;
+  min-height: 200px;
   margin: 12px 0;
 }
 .pick-stage .cab {
