@@ -309,13 +309,34 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
     0 0 0 6px var(--ssu),
     0 8px 18px rgba(0, 122, 163, 0.28);
 }
-.door:disabled {
-  background: rgba(255,255,255,0.45);
+/* 선택 가능(대여=보관중 / 반납=비어있음) → 파란색 */
+.door.door-hot {
+  background: var(--door-face);
+  color: #fff;
+}
+/* 선택 불가지만 비활성 회색은 아님 */
+.door.door-idle {
+  background: linear-gradient(165deg, #B7C5CD 0%, #9AADB8 55%, #8799A4 100%);
+  color: #F4F7F9;
+  box-shadow:
+    inset -2px 0 0 rgba(255,255,255,0.12),
+    0 4px 10px rgba(60, 80, 95, 0.12);
+}
+.door.door-prep {
+  background: rgba(255,255,255,0.5);
   color: var(--muted);
   box-shadow: none;
+  cursor: default;
+}
+.door.door-prep::before { display: none; }
+/* 문 열리는 동안 클릭만 막고, 색은 유지 */
+.door.door-locked {
+  pointer-events: none;
+  cursor: default;
+}
+.door:disabled {
   cursor: not-allowed;
 }
-.door:disabled::before { display: none; }
 /* 열림 / 닫힘 — DOM을 유지한 채 클래스만 바꿔 transition */
 .door.open,
 .door.opening {
@@ -372,44 +393,44 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 }
 .ts { font-size: 12px; font-weight: 600; opacity: 0.9; }
 
-/* 대여함 화면: 타이머 자리 예약 + 보관함 중앙 고정 */
+/* 대여함 화면: 타이머는 오버레이 → 중앙 보관함 위치 고정 */
 .pick-view {
+  position: relative;
   min-height: 0;
+  flex: 1;
 }
 .pick-timer-slot {
-  min-height: 0;
-  margin-bottom: 0;
-  display: grid;
-  grid-template-rows: 0fr;
-  overflow: hidden;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 44px; /* top-nav 아래 */
+  z-index: 5;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  transform: translate3d(0, -18px, 0);
+  opacity: 0;
   transition:
-    grid-template-rows var(--ui-dur) var(--ui-ease),
-    margin-bottom 0.45s var(--ui-ease);
+    transform 0.75s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .pick-timer-slot.has-timer {
-  grid-template-rows: 1fr;
-  margin-bottom: 16px;
-  min-height: 58px;
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.pick-timer-slot.is-leaving {
+  transform: translate3d(0, -128%, 0);
+  opacity: 0;
+  pointer-events: none;
 }
 .pick-timer-slot > .timer-slot-inner {
-  min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .pick-timer-slot .timer {
   width: 100%;
   margin: 0;
-  transition:
-    transform 0.45s var(--ui-ease),
-    opacity 0.45s var(--ui-ease);
-}
-.pick-timer-slot.is-leaving .timer {
-  transform: translateY(-110%);
-  opacity: 0;
-}
-.pick-timer-slot.is-leaving {
-  grid-template-rows: 0fr;
-  margin-bottom: 0;
-  min-height: 0;
+  box-shadow: 0 10px 28px rgba(25, 31, 40, 0.16);
 }
 .timer-compact {
   padding: 10px 14px 8px;
@@ -455,14 +476,7 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 }
 .pick-head {
   margin-top: 4px;
-  transition: transform 0.45s var(--ui-ease);
-}
-.pick-head.is-rising {
-  animation: pickHeadRise 0.45s var(--ui-ease) both;
-}
-@keyframes pickHeadRise {
-  from { transform: translateY(18px); opacity: 0.85; }
-  to { transform: translateY(0); opacity: 1; }
+  flex-shrink: 0;
 }
 .pick-head .section-title { margin-bottom: 2px; }
 .pick-head .section-desc { margin-bottom: 0; }
@@ -481,11 +495,12 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   width: 100%;
   margin: 0;
 }
-.pick-view .msg { min-height: 40px; margin: 0; }
+.pick-view .msg { min-height: 40px; margin: 0; flex-shrink: 0; }
 .pick-actions {
   margin-top: 8px;
   padding-top: 8px;
-  min-height: 54px; /* 버튼 1칸만 — 크로스페이드로 교체 */
+  min-height: 54px;
+  flex-shrink: 0;
 }
 
 .footer-link {

@@ -342,27 +342,34 @@ function render() {
     ? "비어 있는 칸을 골라 우산을 넣어 주세요."
     : `1~${MAX_HW_SLOT}번 칸만 하드웨어와 연결돼 있어요.`;
 
+  const locked = state.busy || state.returning;
   for (let i = 1; i <= TOTAL_SLOTS; i++) {
     const hw = i <= MAX_HW_SLOT;
-    // 대여: 보관중(in)만 선택 / 반납: HW 칸은 모두 눌러볼 수 있음(보관중은 버튼 비활성)
-    const selectable = hw && !state.busy && !state.returning && (
-      isReturnPick ? true : state.slots[i] === "in"
-    );
-    const canAct = isReturnPick
-      ? state.slots[i] === "out"
-      : state.slots[i] === "in";
+    // 대여: 보관중(in)만 파란 선택 / 반납: 비어있음(out)만 파란 선택(보관중도 탭은 가능)
+    const canAct = hw && (isReturnPick ? state.slots[i] === "out" : state.slots[i] === "in");
+    const canTap = hw && !locked && (isReturnPick ? true : canAct);
     const wrap = document.createElement("div");
     wrap.className = "door-wrap";
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.slot = String(i);
-    b.className = `door${state.selected === i ? " sel" : ""}${state.openSlot === i ? " open" : ""}`;
-    b.disabled = !selectable;
+    const tone = !hw ? "door-prep" : canAct ? "door-hot" : "door-idle";
+    b.className = [
+      "door",
+      tone,
+      state.selected === i ? "sel" : "",
+      state.openSlot === i ? "open" : "",
+      locked ? "door-locked" : "",
+    ].filter(Boolean).join(" ");
+    // disabled 회색 대신 클래스만 — 문 열릴 때 다른 칸 색 유지
+    b.disabled = !hw;
+    if (!canTap) b.setAttribute("aria-disabled", "true");
+    else b.removeAttribute("aria-disabled");
     const label = slotLabel(i, isReturnPick);
     b.setAttribute("aria-label", `${i}번 ${label}`);
     b.innerHTML = `<span class="n">${i}</span><span class="t">${label}</span>`;
     b.onclick = () => {
-      if (!selectable) return;
+      if (!canTap) return;
       state.selected = i;
       setMsg(isReturnPick && !canAct ? "이 칸에는 이미 우산이 있어 반납할 수 없어요." : "");
       render();
@@ -566,22 +573,15 @@ async function playReturnSuccessBanner(slot, rentalSnap) {
 
   await wait(RETURN_BANNER_MS);
 
-  if (head) {
-    head.classList.remove("is-rising");
-    void head.offsetWidth;
-    head.classList.add("is-rising");
-  }
   slotEl.classList.add("is-leaving");
-  await wait(480);
+  await wait(780);
 
   timer.hidden = true;
   timer.classList.remove("is-return-done");
   slotEl.classList.remove("has-timer", "is-leaving");
   state.returnBanner = false;
-  if (head) {
-    head.addEventListener("animationend", () => head.classList.remove("is-rising"), { once: true });
-  }
   tick();
+  void head;
 }
 
 function fmt(ms) {
