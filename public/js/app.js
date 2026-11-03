@@ -47,11 +47,21 @@ const STATION_BY_KEY = (() => {
 const STATION_QR = Object.fromEntries(STATIONS.map((s) => [s.code, s.qr || s.code]));
 const $ = (id) => document.getElementById(id);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const waitFrames = (n = 2) => new Promise((resolve) => {
+  let left = n;
+  const step = () => {
+    left -= 1;
+    if (left <= 0) resolve();
+    else requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+});
 const DOOR_MS = 720;
 const DOOR_HOLD_MS = 2200;
 const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
 const RETURN_DETECT_TIMEOUT_MS = 90000;
 const RETURN_BANNER_MS = 5000;
+const SLIDE_MS = 950;
 
 const state = {
   user: null,
@@ -515,12 +525,10 @@ async function go() {
       state.selected = null;
       returnWaitResolve = null;
       setMsg("");
-      // 홈 타이머는 숨기고, pick 타이머는 완료 멘트로 전환
-      document.querySelectorAll(".timer").forEach((el) => {
-        if (el.id !== "pickTimer") el.hidden = true;
-      });
-      render();
-      await playReturnSuccessBanner(slot, rentalSnap);
+      // 홈으로 이동 후, 대여시간 자리에 반납 완료 배너
+      goTab("home");
+      await waitFrames(3);
+      await playHomeReturnBanner(slot, rentalSnap);
       returnUiDone = true;
     } else {
       const r = await rentUmbrella(params);
@@ -552,11 +560,10 @@ async function go() {
   }
 }
 
-/** 반납 완료 멘트 → 대기 → 상단으로 슬라이드 아웃 + 제목 영역 상승 */
-async function playReturnSuccessBanner(slot, rentalSnap) {
-  const slotEl = $("pickTimerSlot");
-  const timer = $("pickTimer");
-  const head = $("pickHead");
+/** 홈: 반납 완료 멘트 → 대기 → 부드럽게 위로 슬라이드 아웃 */
+async function playHomeReturnBanner(slot, rentalSnap) {
+  const slotEl = $("homeTimerSlot");
+  const timer = $("homeTimer");
   if (!slotEl || !timer) return;
 
   state.returnBanner = true;
@@ -580,22 +587,21 @@ async function playReturnSuccessBanner(slot, rentalSnap) {
   if (bar) bar.style.width = "100%";
 
   slotEl.classList.remove("is-leaving");
-  // 레이아웃 자리 + 페이드인 (제목은 타이머 아래)
+  await waitFrames(2);
   slotEl.classList.add("has-timer");
-  void slotEl.offsetWidth;
+  await waitFrames(2);
 
   await wait(RETURN_BANNER_MS);
 
-  // 타이머·여백이 같이 접히며 제목·본문이 원위치로 상승
   slotEl.classList.add("is-leaving");
-  await wait(780);
+  await wait(SLIDE_MS);
 
   timer.hidden = true;
   timer.classList.remove("is-return-done");
   slotEl.classList.remove("has-timer", "is-leaving");
   state.returnBanner = false;
+  syncUserChrome();
   tick();
-  void head;
 }
 
 function fmt(ms) {
@@ -606,24 +612,22 @@ function fmt(ms) {
   return `${h}:${String(m).padStart(2, "0")}:${String(c).padStart(2, "0")}`;
 }
 
-function syncPickTimerSlot() {
-  const slotEl = $("pickTimerSlot");
-  const timer = $("pickTimer");
+function syncTimerSlot(slotId, timerId, forceShow) {
+  const slotEl = $(slotId);
+  const timer = $(timerId);
   if (!slotEl || !timer) return;
-  if (state.returnBanner || (state.user && state.user.activeRental && !timer.hidden)) {
-    slotEl.classList.add("has-timer");
-  } else if (!slotEl.classList.contains("is-leaving")) {
-    slotEl.classList.remove("has-timer");
-  }
+  const show = forceShow || (timer && !timer.hidden && !slotEl.classList.contains("is-leaving"));
+  if (show) slotEl.classList.add("has-timer");
+  else if (!slotEl.classList.contains("is-leaving")) slotEl.classList.remove("has-timer");
 }
 
 function tick() {
   const r = state.user && state.user.activeRental;
   document.querySelectorAll(".timer").forEach((el) => {
-    // 반납 완료 배너 중에는 pick 타이머를 덮어쓰지 않음
-    if (el.id === "pickTimer" && state.returnBanner) return;
+    // 홈 반납완료 배너 중에는 homeTimer 덮어쓰지 않음
+    if (el.id === "homeTimer" && state.returnBanner) return;
     if (!r) {
-      if (!(el.id === "pickTimer" && state.returnBanner)) el.hidden = true;
+      if (!(el.id === "homeTimer" && state.returnBanner)) el.hidden = true;
       return;
     }
     el.hidden = false;
@@ -634,13 +638,18 @@ function tick() {
     el.classList.toggle("over", over);
     el.querySelector(".tl").textContent = over ? "반납 기한이 지났어요" : "남은 대여시간";
     el.querySelector(".tv").textContent = (over ? "+" : "") + fmt(Math.abs(left));
-    el.querySelector(".bar i").style.width = `${Math.max(0, Math.min(100, (left / RENT_LIMIT_MS) * 100))}%`;
+    const bar = el.querySelector(".bar i");
+    if (bar) bar.style.width = `${Math.max(0, Math.min(100, (left / RENT_LIMIT_MS) * 100))}%`;
     const stationLabel = STATION_NAMES[r.station] || STATION_QR[r.station] || r.station;
-    el.querySelector(".ts").textContent =
-      `${stationLabel} ${r.slot}번 칸 · 반납 기한 ` +
-      new Date(due).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const ts = el.querySelector(".ts");
+    if (ts) {
+      ts.textContent =
+        `${stationLabel} ${r.slot}번 칸 · 반납 기한 ` +
+        new Date(due).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+    }
   });
-  syncPickTimerSlot();
+  syncTimerSlot("pickTimerSlot", "pickTimer", !!(r && $("pickTimer") && !$("pickTimer").hidden));
+  syncTimerSlot("homeTimerSlot", "homeTimer", !!(state.returnBanner || (r && $("homeTimer") && !$("homeTimer").hidden)));
 }
 
 let qrToastTimer = null;

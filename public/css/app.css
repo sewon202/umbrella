@@ -359,15 +359,67 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 }
 
 .timer {
-  margin-bottom: 16px;
+  margin-bottom: 0;
   background: linear-gradient(135deg, var(--ssu-deep), #005F7F);
   color: #fff;
   border-radius: var(--radius);
   padding: 18px 18px 16px;
   box-shadow: var(--shadow);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  transform: translateZ(0);
 }
 .timer[hidden] { display: none !important; }
 .timer.over { background: linear-gradient(135deg, #E04848, #C03636); }
+
+/* 홈 타이머/반납완료 배너 — 레이아웃 + GPU 슬라이드 */
+.home-timer-slot {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin: 0 0 0;
+  overflow: hidden;
+  transition:
+    grid-template-rows 0.95s cubic-bezier(0.16, 1, 0.3, 1),
+    margin-bottom 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: grid-template-rows;
+}
+.home-timer-slot.has-timer {
+  grid-template-rows: 1fr;
+  margin-bottom: 16px;
+}
+.home-timer-slot.is-leaving {
+  grid-template-rows: 0fr;
+  margin-bottom: 0;
+}
+.home-timer-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.home-timer-slot .timer {
+  width: 100%;
+  opacity: 0;
+  transform: translate3d(0, -14px, 0);
+  transition:
+    transform 0.95s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity;
+}
+.home-timer-slot.has-timer .timer {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+.home-timer-slot.is-leaving .timer {
+  opacity: 0;
+  transform: translate3d(0, -36%, 0);
+}
+.timer.is-return-done {
+  background: linear-gradient(135deg, #1FA97A, #0E8A62);
+}
+.timer.is-return-done .bar { display: none; }
+.timer.is-return-done .tv {
+  font-size: 22px;
+  margin-top: 4px;
+}
 .tl { font-size: 13px; font-weight: 600; opacity: 0.9; }
 .tv {
   font-size: 36px;
@@ -405,8 +457,9 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   margin: 0;
   overflow: hidden;
   transition:
-    grid-template-rows 0.75s cubic-bezier(0.16, 1, 0.3, 1),
-    margin-bottom 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+    grid-template-rows 0.95s cubic-bezier(0.16, 1, 0.3, 1),
+    margin-bottom 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: grid-template-rows;
 }
 .pick-timer-slot.has-timer {
   grid-template-rows: 1fr;
@@ -423,18 +476,19 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 .pick-timer-slot .timer {
   width: 100%;
   margin: 0;
-  transform: translate3d(0, -12px, 0);
+  transform: translate3d(0, -14px, 0);
   opacity: 0;
   transition:
-    transform 0.75s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    transform 0.95s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity;
 }
 .pick-timer-slot.has-timer .timer {
   transform: translate3d(0, 0, 0);
   opacity: 1;
 }
 .pick-timer-slot.is-leaving .timer {
-  transform: translate3d(0, -100%, 0);
+  transform: translate3d(0, -36%, 0);
   opacity: 0;
 }
 .timer-compact {
@@ -466,23 +520,14 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.timer.is-return-done {
-  background: linear-gradient(135deg, #1FA97A, #0E8A62);
-}
-.timer.is-return-done .bar { display: none; }
-.timer.is-return-done .timer-compact-row {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-.timer.is-return-done .tv {
+.timer-compact.is-return-done .tv {
   font-size: 17px;
   font-weight: 800;
 }
 .pick-head {
   margin-top: 0;
   flex-shrink: 0;
-  transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pick-head .section-title { margin-bottom: 2px; }
 .pick-head .section-desc { margin-bottom: 0; }
@@ -548,7 +593,10 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 .nav-back:active,
 .nav-home:active { color: var(--ssu); opacity: 0.85; }
 
-.home-card { margin-top: 8px; }
+.home-card {
+  margin-top: 8px;
+  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+}
 .home-card-title {
   margin: 0 0 12px;
   font-size: 15px;
@@ -1311,6 +1359,13 @@ body.qr-open main {
   .door { transition: none; }
   .btn { transition: none; }
   .ui-motion { transition: none !important; }
+  .home-timer-slot,
+  .home-timer-slot .timer,
+  .pick-timer-slot,
+  .pick-timer-slot .timer,
+  .home-card {
+    transition: none !important;
+  }
   .qr-scanline, .qr-stage.ready .qr-corner, .qr-toast.shake,
   .qr-success.is-on .qr-success-badge, .code-field input.shake {
     animation: none !important;
