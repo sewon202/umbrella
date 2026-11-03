@@ -1,0 +1,14 @@
+---
+description: Never attribute git commits to Cursor Agent (no Co-authored-by)
+alwaysApply: true
+---
+
+# Git authorship — no Cursor in contributors
+
+When creating or amending git commits for this repo:
+
+- Author/committer must be the user's git identity (Youjune Park), never Cursor Agent.
+- Do **not** include `Co-authored-by: Cursor` or any Cursor/cursoragent trailer in commit messages.
+- If the environment auto-appends a Cursor `Co-authored-by` line, strip it before push (rewrite the commit message with `git filter-branch` / `git rebase` msg-filter, or equivalent) so it never lands on the remote.
+- Prefer not force-pushing `main`; if stripping a trailer already pushed requires history rewrite, warn the user first and use `--force-with-lease` only with explicit approval.
+- Do not commit `umbrella.db`.
