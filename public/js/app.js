@@ -51,6 +51,7 @@ const DOOR_MS = 720;
 const DOOR_HOLD_MS = 2200;
 const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
 const RETURN_DETECT_TIMEOUT_MS = 90000;
+const RETURN_BANNER_MS = 5000;
 
 const state = {
   user: null,
@@ -60,6 +61,7 @@ const state = {
   openSlot: null,
   busy: false,
   returning: false,
+  returnBanner: false, // 반납 완료 배너 표시 중
   tab: "home",
 };
 
@@ -466,11 +468,13 @@ async function go() {
   setMsg(isReturn ? "반납을 처리하는 중…" : "대여를 처리하는 중…");
   render();
 
+  let returnUiDone = false;
   try {
     if (isReturn) {
       const openedAt = Date.now();
+      const rentalSnap = state.user.activeRental;
       await returnUmbrella(params);
-      state.user.activeRental = null;
+      // 타이머 UI는 반납 완료 배너까지 유지 (서버 activeRental 은 이미 해제)
       state.returning = true;
       state.busy = false;
       syncPickActions();
@@ -486,7 +490,19 @@ async function go() {
       await playDoorClose(slot);
       state.returning = false;
       syncPickActions();
-      setMsg("반납이 완료됐어요.");
+      state.user.activeRental = null;
+      await refreshInventory();
+      state.busy = false;
+      state.selected = null;
+      returnWaitResolve = null;
+      setMsg("");
+      // 홈 타이머는 숨기고, pick 타이머는 완료 멘트로 전환
+      document.querySelectorAll(".timer").forEach((el) => {
+        if (el.id !== "pickTimer") el.hidden = true;
+      });
+      render();
+      await playReturnSuccessBanner(slot, rentalSnap);
+      returnUiDone = true;
     } else {
       const r = await rentUmbrella(params);
       state.user.activeRental = {
@@ -497,19 +513,75 @@ async function go() {
       await playDoorOpen(slot);
       await wait(DOOR_HOLD_MS);
       await playDoorClose(slot);
+      await refreshInventory();
     }
-    await refreshInventory();
   } catch (e) {
     state.openSlot = null;
     state.returning = false;
+    state.returnBanner = false;
     setMsg(friendlyError(e));
   } finally {
     state.busy = false;
     state.selected = null;
     returnWaitResolve = null;
-    tick();
-    render();
+    if (!returnUiDone) {
+      tick();
+      render();
+    } else {
+      tick();
+    }
   }
+}
+
+/** 반납 완료 멘트 → 대기 → 상단으로 슬라이드 아웃 + 제목 영역 상승 */
+async function playReturnSuccessBanner(slot, rentalSnap) {
+  const slotEl = $("pickTimerSlot");
+  const timer = $("pickTimer");
+  const head = $("pickHead");
+  if (!slotEl || !timer) return;
+
+  state.returnBanner = true;
+  timer.hidden = false;
+  timer.classList.add("is-return-done");
+  timer.classList.remove("over");
+  const tl = timer.querySelector(".tl");
+  const tv = timer.querySelector(".tv");
+  const ts = timer.querySelector(".ts");
+  const bar = timer.querySelector(".bar i");
+  if (tl) tl.textContent = "반납 완료";
+  if (tv) tv.textContent = "우산이 반납되었어요";
+  const place = rentalSnap
+    ? (STATION_NAMES[rentalSnap.station] || STATION_QR[rentalSnap.station] || rentalSnap.station)
+    : "";
+  if (ts) {
+    ts.textContent = place
+      ? `${place} · ${slot}번 칸에 잘 보관했어요`
+      : (slot ? `${slot}번 칸에 잘 보관했어요` : "이제 다시 대여할 수 있어요");
+  }
+  if (bar) bar.style.width = "100%";
+
+  slotEl.classList.remove("is-leaving");
+  slotEl.classList.add("has-timer");
+  void slotEl.offsetWidth;
+
+  await wait(RETURN_BANNER_MS);
+
+  if (head) {
+    head.classList.remove("is-rising");
+    void head.offsetWidth;
+    head.classList.add("is-rising");
+  }
+  slotEl.classList.add("is-leaving");
+  await wait(480);
+
+  timer.hidden = true;
+  timer.classList.remove("is-return-done");
+  slotEl.classList.remove("has-timer", "is-leaving");
+  state.returnBanner = false;
+  if (head) {
+    head.addEventListener("animationend", () => head.classList.remove("is-rising"), { once: true });
+  }
+  tick();
 }
 
 function fmt(ms) {
@@ -520,11 +592,28 @@ function fmt(ms) {
   return `${h}:${String(m).padStart(2, "0")}:${String(c).padStart(2, "0")}`;
 }
 
+function syncPickTimerSlot() {
+  const slotEl = $("pickTimerSlot");
+  const timer = $("pickTimer");
+  if (!slotEl || !timer) return;
+  if (state.returnBanner || (state.user && state.user.activeRental && !timer.hidden)) {
+    slotEl.classList.add("has-timer");
+  } else if (!slotEl.classList.contains("is-leaving")) {
+    slotEl.classList.remove("has-timer");
+  }
+}
+
 function tick() {
   const r = state.user && state.user.activeRental;
   document.querySelectorAll(".timer").forEach((el) => {
-    if (!r) { el.hidden = true; return; }
+    // 반납 완료 배너 중에는 pick 타이머를 덮어쓰지 않음
+    if (el.id === "pickTimer" && state.returnBanner) return;
+    if (!r) {
+      if (!(el.id === "pickTimer" && state.returnBanner)) el.hidden = true;
+      return;
+    }
     el.hidden = false;
+    el.classList.remove("is-return-done");
     const due = r.due_at || r.rented_at + RENT_LIMIT_MS;
     const left = due - Date.now();
     const over = left < 0;
@@ -537,6 +626,7 @@ function tick() {
       `${stationLabel} ${r.slot}번 칸 · 반납 기한 ` +
       new Date(due).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
   });
+  syncPickTimerSlot();
 }
 
 let qrToastTimer = null;
