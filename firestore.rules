@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isDevice() {
+      return signedIn() && request.auth.token.email == 'device@umbrella.local';
+    }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // 사용자 프로필
+    match /students/{uid} {
+      allow read: if isOwner(uid) || isDevice();
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasAll(['studentId', 'name', 'created_at'])
+        && request.resource.data.studentId is string
+        && request.resource.data.name is string;
+      allow update: if isOwner(uid) || isDevice();
+    }
+
+    // 우산 보관 슬롯 (station-slot)
+    match /umbrellas/{id} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+    }
+
+    // 대여 기록
+    match /rentals/{id} {
+      allow read: if signedIn() && (
+        resource.data.studentUid == request.auth.uid || isDevice()
+      );
+      allow create: if signedIn()
+        && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.status == 'active';
+      allow update: if signedIn() && (
+        resource.data.studentUid == request.auth.uid || isDevice()
+      );
+    }
+
+    match /commands/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.station is string
+        && request.resource.data.slot is int
+        && request.resource.data.slot >= 1
+        && request.resource.data.slot <= 2
+        && request.resource.data.action is string
+        && request.resource.data.done == 0;
+      allow update: if signedIn();
+    }
+
+    match /device_events/{id} {
+      allow read, create: if signedIn();
+    }
+
+    match /stations/{id} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+  }
+}

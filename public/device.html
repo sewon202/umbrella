@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>장치 테스트 · Umbrella</title>
+<link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <h1>장치 / 명령 테스트</h1>
+  <p class="muted">
+    로그인 없이 슬롯 open 명령을 넣어요.<br>
+    <b>유선:</b> USB 연결 후 PC에서 <code>npm run bridge</code> (Firebase면 <code>npm run bridge:firebase</code>)<br>
+    <b>무선:</b> 로컬 서버일 때 보드가 WiFi로 <code>/api/device/next</code> 폴링
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>station</label>
+        <select id="station"></select>
+      </div>
+      <div>
+        <label>slot</label>
+        <select id="slot"></select>
+      </div>
+      <div><button class="primary" id="btnOpen">문 열기 명령 보내기</button></div>
+      <div><button class="ghost" id="btnRefresh">새로고침</button></div>
+    </div>
+    <p id="msg" class="muted"></p>
+  </div>
+
+  <div class="card">
+    <h2>백엔드 / 헬스</h2>
+    <pre id="health">loading…</pre>
+  </div>
+
+  <div class="card">
+    <h2>최근 명령 · 이벤트</h2>
+    <pre id="recent">loading…</pre>
+  </div>
+
+  <p><a href="/">← 앱으로</a> · <a href="/admin.html">DB 관리</a></p>
+
+<script src="/firebase-config.js"></script>
+<script type="module">
+import {
+  getMode, loginDevice, openDoor, health, debugRecent, friendlyError,
+  STATIONS, MAX_HW_SLOT,
+} from "/js/backend.js";
+
+const $ = (id) => document.getElementById(id);
+$("station").innerHTML = STATIONS.map((s) => `<option value="${s.code}">${s.code} · ${s.name}</option>`).join("");
+$("slot").innerHTML = Array.from({ length: MAX_HW_SLOT }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
+
+let authed = false;
+async function ensureAuth() {
+  if (authed) return;
+  await loginDevice();
+  authed = true;
+}
+
+async function refresh() {
+  try {
+    const [h, r] = await Promise.all([health(), debugRecent()]);
+    $("health").textContent = JSON.stringify({ mode: getMode(), ...h }, null, 2);
+    $("recent").textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    $("health").textContent = friendlyError(e);
+  }
+}
+
+$("btnOpen").onclick = async () => {
+  try {
+    await ensureAuth();
+    $("msg").textContent = "보내는 중…";
+    const body = await openDoor({
+      station: $("station").value,
+      slot: Number($("slot").value),
+      action: "open",
+      studentId: "device-test",
+    });
+    $("msg").textContent = `OK · command id=${body.id} → 브리지/보드가 받으면 서보 동작`;
+    refresh();
+  } catch (e) {
+    $("msg").textContent = friendlyError(e);
+  }
+};
+$("btnRefresh").onclick = refresh;
+
+(async () => {
+  try { await ensureAuth(); } catch (e) { $("msg").textContent = friendlyError(e); }
+  refresh();
+  setInterval(refresh, (window.UMBRELLA?.cost?.uiRefreshMs) || 10000);
+})();
+</script>
+</body>
+</html>

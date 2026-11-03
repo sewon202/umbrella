@@ -1,0 +1,19 @@
+body{font-family:system-ui,sans-serif;max-width:960px;margin:24px auto;padding:0 16px;line-height:1.45;color:#122}
+h1{font-size:22px;margin:0 0 6px}
+h2{font-size:16px;margin:0 0 8px}
+.muted{color:#667}
+.card{border:1px solid #ccd;border-radius:12px;padding:14px;margin:14px 0;background:#fafafa}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border-bottom:1px solid #dde;padding:8px 6px;text-align:left}
+th{font-size:12px;color:#556}
+label{display:block;font-weight:700;font-size:13px;margin:8px 0 4px}
+input,select,button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid #bbc;cursor:pointer}
+button.primary{background:#F2B705;border:0;font-weight:800}
+button.ghost{background:#fff}
+pre{background:#12202B;color:#E8F0F5;padding:12px;border-radius:10px;overflow:auto;font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.row > *{flex:1;min-width:120px}
+.ok{color:#2E7D32}.err{color:#B3261E}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.in{background:#E3F2E8;color:#1B5E20}.out{background:#FDECEA;color:#B3261E}
+code{background:#eef;padding:1px 5px;border-radius:4px}

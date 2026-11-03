@@ -4,20 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>우산 대여 회원가입</title>
+<link rel="stylesheet" href="/css/app.css">
 <style>
-:root{--bg:#E6ECF0;--card:#F7FAFB;--ink:#12202B;--muted:#5B6B77;--line:#C5D0D8;--accent:#F2B705;--err:#B3261E;--ok:#1B6B3A;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#0F1A22;--card:#17252F;--ink:#E8F0F5;--muted:#93A5B2;--line:#2A3C48;--err:#F2B8B5;--ok:#8FD6A8;color-scheme:dark}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.5}
-main{max-width:440px;margin:0 auto;padding:28px 20px 40px}
-h1{font-size:30px;font-weight:900;margin:0 0 6px}
-p{margin:0 0 16px;color:var(--muted)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
-label{display:block;font-weight:700;font-size:14px;margin:14px 0 6px}
-input{width:100%;font:inherit;font-size:16px;padding:13px 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}
-input:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-button{width:100%;margin-top:18px;font:inherit;font-weight:900;font-size:17px;padding:15px;border:0;border-radius:12px;background:var(--accent);color:#12202B;cursor:pointer}
-button:disabled{opacity:.5}
 #msg{min-height:22px;margin:12px 0 0;font-size:14px;font-weight:700}
 #msg.err{color:var(--err)}#msg.ok{color:var(--ok)}
 </style>
@@ -36,22 +24,34 @@ button:disabled{opacity:.5}
     <label for="pw2">비밀번호 확인</label>
     <input id="pw2" type="password" autocomplete="new-password">
     <p id="msg" role="alert"></p>
-    <button id="btn">가입하기</button>
+    <button class="btn" id="btn">가입하기</button>
+    <a class="btn ghost" href="/" style="display:block;text-align:center;text-decoration:none">로그인으로</a>
   </div>
 </main>
-<script>
-var $=function(i){return document.getElementById(i)};
-function say(t,c){$("msg").textContent=t;$("msg").className=c||""}
-$("btn").onclick=async function(){
-  if($("pw").value!==$("pw2").value){say("비밀번호가 서로 달라요.","err");return}
-  $("btn").disabled=true;say("가입 중이에요…");
-  try{
-    var r=await fetch("/api/signup",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({studentId:$("sid").value.trim(),name:$("nm").value,password:$("pw").value})});
-    var d=await r.json();
-    if(r.ok)say("가입이 완료됐어요. 이제 로그인할 수 있어요.","ok");else say(d.error||"가입하지 못했어요.","err");
-  }catch(e){say("서버에 연결하지 못했어요.","err")}
-  $("btn").disabled=false;
+<script src="/firebase-config.js"></script>
+<script type="module">
+import { signup, friendlyError } from "/js/backend.js";
+const $ = (id) => document.getElementById(id);
+const say = (t, c) => { $("msg").textContent = t; $("msg").className = c || ""; };
+
+$("btn").onclick = async () => {
+  const studentId = $("sid").value.trim();
+  const name = $("nm").value.trim();
+  const password = $("pw").value;
+  if (!/^\d{6,10}$/.test(studentId)) return say("학번은 숫자 6~10자리로 입력해 주세요.", "err");
+  if (!name) return say("이름을 입력해 주세요.", "err");
+  if (password.length < 6) return say("비밀번호는 6자 이상이어야 해요.", "err");
+  if (password !== $("pw2").value) return say("비밀번호가 서로 달라요.", "err");
+
+  $("btn").disabled = true;
+  say("가입 중이에요…");
+  try {
+    await signup({ studentId, name, password });
+    say("가입이 완료됐어요. 이제 로그인할 수 있어요.", "ok");
+  } catch (e) {
+    say(friendlyError(e), "err");
+  }
+  $("btn").disabled = false;
 };
 </script>
 </body>

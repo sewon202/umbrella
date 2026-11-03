@@ -1,10 +1,32 @@
 {
   "name": "umbrella-server",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
+  "scripts": {
+    "start": "node server.js",
+    "bridge": "node bridge/serial-bridge.js",
+    "bridge:firebase": "BACKEND=firebase node bridge/serial-bridge.js",
+    "dev": "node server.js",
+    "firebase:login": "firebase login",
+    "firebase:use": "firebase use",
+    "firebase:deploy": "firebase deploy --only hosting,firestore",
+    "firebase:hosting": "firebase deploy --only hosting",
+    "firebase:rules": "firebase deploy --only firestore:rules",
+    "firebase:emulators": "firebase emulators:start --only hosting,auth,firestore"
+  },
   "dependencies": {
+    "@serialport/parser-readline": "^12.0.0",
     "express": "^4.19.2",
-    "sqlite3": "^5.1.7"
+    "firebase": "^11.0.2",
+    "serialport": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "allowScripts": {
+    "@serialport/bindings-cpp@12.0.1": true
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.34.2"
   }
 }

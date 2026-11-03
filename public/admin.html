@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>관리 · Umbrella DB</title>
+<link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <h1>우산 / 사용자 DB 관리</h1>
+  <p class="muted">device 계정으로 자동 로그인 · 주기 새로고침은 firebase-config의 <code>cost.uiRefreshMs</code></p>
+  <p id="status" class="muted">연결 중…</p>
+
+  <div class="card">
+    <h2>우산 보관 상태</h2>
+    <div id="umbBox">불러오는 중…</div>
+  </div>
+
+  <div class="card">
+    <h2>사용자</h2>
+    <div id="userBox">불러오는 중…</div>
+  </div>
+
+  <div class="card">
+    <h2>활성 대여</h2>
+    <div id="rentBox">불러오는 중…</div>
+  </div>
+
+  <p><a href="/">← 앱으로</a> · <a href="/device.html">장치 테스트</a></p>
+
+<script src="/firebase-config.js"></script>
+<script type="module">
+import {
+  getMode, loginDevice, listAllUmbrellas, listStudents, listActiveRentals,
+  setUmbrellaStatus, seedInventory, friendlyError,
+} from "/js/backend.js";
+
+const $ = (id) => document.getElementById(id);
+const fmt = (ts) => (ts ? new Date(ts).toLocaleString("ko-KR") : "-");
+const esc = (v) => String(v ?? "-").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function table(headers, rows, emptyText) {
+  const head = headers.map((h) => `<th>${h}</th>`).join("");
+  const body = rows.length
+    ? rows.map((cells) => `<tr>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")
+    : `<tr><td colspan="${headers.length}">${emptyText}</td></tr>`;
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+async function loadAll() {
+  const [umbs, users, rents] = await Promise.all([
+    listAllUmbrellas(),
+    listStudents().catch(() => []),
+    listActiveRentals().catch(() => []),
+  ]);
+
+  $("umbBox").innerHTML = table(
+    ["ID", "대여소", "슬롯", "상태", "대여자", "변경"],
+    umbs.map((u) => {
+      const st = u.status === "out" ? "out" : "in";
+      return [
+        esc(u.id), esc(u.station), esc(u.slot),
+        `<span class="pill ${st}">${st === "in" ? "보관중" : "대여중"}</span>`,
+        esc(u.rented_by),
+        `<button data-id="${u.station}|${u.slot}|in">보관</button>
+         <button data-id="${u.station}|${u.slot}|out">대여중</button>`,
+      ];
+    }),
+    "우산 데이터 없음"
+  );
+  $("umbBox").querySelectorAll("button[data-id]").forEach((btn) => {
+    btn.onclick = async () => {
+      const [station, slot, status] = btn.dataset.id.split("|");
+      try {
+        await setUmbrellaStatus({ station, slot: Number(slot), status });
+        await loadAll();
+      } catch (e) {
+        alert(friendlyError(e));
+      }
+    };
+  });
+
+  $("userBox").innerHTML = table(
+    ["학번", "이름", "가입", "활성 대여"],
+    users.map((u) => [
+      esc(u.studentId), esc(u.name), fmt(u.created_at),
+      u.activeRental ? `${esc(u.activeRental.station)}-${esc(u.activeRental.slot)} · ${fmt(u.activeRental.rented_at)}` : "-",
+    ]),
+    "사용자 없음 (앱에서 회원가입)"
+  );
+
+  $("rentBox").innerHTML = table(
+    ["학번", "위치", "대여시각", "기한"],
+    rents.map((r) => [esc(r.studentId), `${esc(r.station)}-${esc(r.slot)}`, fmt(r.rented_at), fmt(r.due_at)]),
+    "활성 대여 없음"
+  );
+}
+
+(async () => {
+  try {
+    $("status").textContent = `mode=${getMode()} · 로그인 중…`;
+    await loginDevice();
+    await seedInventory();
+    $("status").className = "ok";
+    $("status").textContent = `연결됨 · ${getMode()}`;
+    await loadAll();
+    const ms = (window.UMBRELLA?.cost?.uiRefreshMs) || 10000;
+    setInterval(() => loadAll().catch(() => {}), ms);
+  } catch (e) {
+    $("status").className = "err";
+    $("status").textContent = `실패: ${friendlyError(e)} — device 계정/설정 확인`;
+  }
+})();
+</script>
+</body>
+</html>
