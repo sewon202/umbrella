@@ -540,6 +540,13 @@ async function go() {
       await wait(DOOR_HOLD_MS);
       await playDoorClose(slot);
       await refreshInventory();
+      state.busy = false;
+      state.selected = null;
+      returnWaitResolve = null;
+      tick();
+      syncUserChrome();
+      goTab("home");
+      returnUiDone = true;
     }
   } catch (e) {
     state.openSlot = null;
@@ -620,10 +627,7 @@ function tick() {
   });
   syncTimerSlot("pickTimerSlot", "pickTimer", !!(r && $("pickTimer") && !$("pickTimer").hidden));
   syncTimerSlot("homeTimerSlot", "homeTimer", !!(r && $("homeTimer") && !$("homeTimer").hidden));
-  const placeSlot = $("placeTimerSlot");
-  if (placeSlot) {
-    placeSlot.classList.toggle("has-timer", !!(r && $("placeTimer") && !$("placeTimer").hidden));
-  }
+  syncTimerSlot("placeTimerSlot", "placeTimer", !!(r && $("placeTimer") && !$("placeTimer").hidden));
 }
 
 let qrToastTimer = null;

@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>숭실 우산 대여</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=39">
+<link rel="stylesheet" href="/css/app.css?v=40">
 </head>
 <body>
 <main>
 
 <section class="view on" id="v-login">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=39" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=40" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title">학번으로<br>바로 시작해요</h1>
@@ -36,7 +36,7 @@
 
 <section class="view" id="v-signup">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=39" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=40" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title">회원가입</h1>
@@ -68,7 +68,7 @@
 
 <section class="view" id="v-home">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=39" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=40" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title"><span id="homeWho">안녕하세요</span></h1>
@@ -240,7 +240,7 @@
 
 <section class="view" id="v-settings">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=39" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=40" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">설정</div>
   </div>
   <div class="sheet settings-list">
@@ -260,7 +260,7 @@
 
 <section class="view" id="v-return-done">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=39" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=40" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <div class="return-done-badge" aria-hidden="true">✓</div>
@@ -295,19 +295,23 @@
     <button type="button" class="nav-back" id="placeBack">← 돌아가기</button>
     <button type="button" class="nav-home" id="placeHome">홈</button>
   </div>
-  <div class="place-timer-slot" id="placeTimerSlot">
-    <div class="timer timer-compact" id="placeTimer" hidden>
-      <div class="timer-compact-row">
-        <span class="tl"></span>
-        <span class="tv"></span>
+  <div class="pick-timer-slot place-timer-slot" id="placeTimerSlot">
+    <div class="timer-slot-inner">
+      <div class="timer timer-compact" id="placeTimer" hidden>
+        <div class="timer-compact-row">
+          <span class="tl"></span>
+          <span class="tv"></span>
+        </div>
+        <div class="bar"><i></i></div>
+        <div class="ts"></div>
       </div>
-      <div class="bar"><i></i></div>
-      <div class="ts"></div>
     </div>
   </div>
-  <h1 class="hero-title place-hero">이 장소가<br>맞나요?</h1>
-  <p class="hero-sub">QR로 연결된 대여소를 확인해 주세요.</p>
-  <div class="sheet">
+  <div class="pick-head place-head">
+    <h2 class="section-title">이 장소가 맞나요?</h2>
+    <p class="section-desc">QR로 연결된 대여소를 확인해 주세요.</p>
+  </div>
+  <div class="sheet place-sheet">
     <div class="place" id="placeName"></div>
     <p class="place-meta" id="placeCode"></p>
     <button class="btn" id="placeYes" type="button">맞아요, 여기예요</button>
@@ -385,6 +389,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=39"></script>
+<script type="module" src="/js/app.js?v=40"></script>
 </body>
 </html>
