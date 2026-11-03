@@ -201,7 +201,7 @@ function createLocalBackend() {
     async getDevicePresence(station = "A1") {
       return api("GET", `/api/device/presence?station=${station}`);
     },
-    async getRecentDeviceEvent() { return null; },
+    async getRecentDeviceEvent() { return null; }, // local: 보드 이벤트 없음
     async debugRecent() { return api("GET", "/api/debug/recent"); },
     async health() { return api("GET", "/api/health"); },
   };
@@ -502,16 +502,20 @@ function createFirebaseBackend() {
       };
     },
 
-    /** 반납 감지(return_ok 등) — since 이후 해당 station/slot 이벤트 */
-    async getRecentDeviceEvent({ station, slot, since = 0 } = {}) {
+    /**
+     * since 이후 station/slot 이벤트.
+     * match(row) 가 있으면 통과한 첫 이벤트만 반환.
+     */
+    async getRecentDeviceEvent({ station, slot, since = 0, match } = {}) {
       const snap = await getDocs(
-        query(collection(db, "device_events"), orderBy("created_at", "desc"), limit(25))
+        query(collection(db, "device_events"), orderBy("created_at", "desc"), limit(40))
       );
       for (const d of snap.docs) {
         const row = docData(d);
         if (row.station !== station) continue;
         if (Number(row.slot) !== Number(slot)) continue;
         if (Number(row.created_at) < Number(since)) continue;
+        if (typeof match === "function" && !match(row)) continue;
         return row;
       }
       return null;

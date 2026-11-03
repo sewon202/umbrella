@@ -57,9 +57,10 @@ const waitFrames = (n = 2) => new Promise((resolve) => {
   requestAnimationFrame(step);
 });
 const DOOR_MS = 720;
-const DOOR_HOLD_MS = 2200;
 const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
-const RETURN_DETECT_TIMEOUT_MS = 90000;
+/** 보드 자동닫힘 대기 (아두이노 OPEN_MAX ≈ 25s + 여유) */
+const DOOR_SENSOR_TIMEOUT_MS = 45000;
+const DOOR_POLL_MS = 700;
 
 const state = {
   user: null,
@@ -415,10 +416,37 @@ function render() {
   syncPickActions();
 }
 
-/** RFID+IR 인식 또는 수동 확인까지 대기 */
-async function waitForReturnConfirm(station, slot, sinceMs) {
+function servoAction(ev) {
+  return String((ev && ev.payload && ev.payload.action) || "");
+}
+
+/** 대여: IR로 우산이 사라진 뒤 보드가 문을 닫을 때까지 대기 */
+async function waitForRentDoorClose(station, slot, sinceMs) {
+  const start = Date.now();
+  while (Date.now() - start < DOOR_SENSOR_TIMEOUT_MS) {
+    try {
+      const ev = await getRecentDeviceEvent({
+        station,
+        slot,
+        since: sinceMs,
+        match: (row) =>
+          row.kind === "servo" && /^(auto_close|auto_close_timeout)$/i.test(servoAction(row)),
+      });
+      if (ev) return /timeout/i.test(servoAction(ev)) ? "timeout" : "sensor";
+    } catch (_) { /* keep waiting */ }
+    await wait(DOOR_POLL_MS);
+  }
+  return "timeout";
+}
+
+/**
+ * 반납: RFID+IR 인식(return_ok) 후 보드 자동닫힘(auto_close_return)까지 대기.
+ * 수동 「우산을 넣었어요」는 보드 없이 닫기 위한 폴백.
+ */
+async function waitForReturnDoorClose(station, slot, sinceMs) {
   return new Promise((resolve) => {
     let settled = false;
+    let sawReturnOk = false;
     const finish = (how) => {
       if (settled) return;
       settled = true;
@@ -429,16 +457,33 @@ async function waitForReturnConfirm(station, slot, sinceMs) {
 
     (async () => {
       const start = Date.now();
-      while (!settled && Date.now() - start < RETURN_DETECT_TIMEOUT_MS) {
+      while (!settled && Date.now() - start < DOOR_SENSOR_TIMEOUT_MS) {
         try {
-          const ev = await getRecentDeviceEvent({ station, slot, since: sinceMs });
-          const act = String(ev?.payload?.action || ev?.payload?.source || "");
-          if (ev && (ev.kind === "return_ok" || (ev.kind === "servo" && /auto_close_return/i.test(act)))) {
-            finish("sensor");
+          if (!sawReturnOk) {
+            const ok = await getRecentDeviceEvent({
+              station,
+              slot,
+              since: sinceMs,
+              match: (row) => row.kind === "return_ok",
+            });
+            if (ok) {
+              sawReturnOk = true;
+              setMsg("우산이 인식됐어요. 문이 닫힐 때까지 기다려 주세요.");
+            }
+          }
+          const closed = await getRecentDeviceEvent({
+            station,
+            slot,
+            since: sinceMs,
+            match: (row) =>
+              row.kind === "servo" && /auto_close_return/i.test(servoAction(row)),
+          });
+          if (closed) {
+            finish(/timeout/i.test(servoAction(closed)) ? "timeout" : "sensor");
             return;
           }
         } catch (_) { /* keep waiting */ }
-        await wait(1000);
+        await wait(DOOR_POLL_MS);
       }
       if (!settled) finish("timeout");
     })();
@@ -508,10 +553,10 @@ async function go() {
       await playDoorOpen(slot);
       render();
 
-      const how = await waitForReturnConfirm(state.station, slot, openedAt);
-      if (how === "sensor") setMsg("우산이 인식됐어요. 문을 닫을게요.");
+      const how = await waitForReturnDoorClose(state.station, slot, openedAt);
+      if (how === "sensor") setMsg("문이 닫히는 중이에요…");
       else if (how === "manual") setMsg("확인됐어요. 문을 닫을게요.");
-      else setMsg("대기 시간이 지났어요. 문을 닫을게요.");
+      else setMsg("보드 응답이 없어 문을 닫을게요.");
 
       await playDoorClose(slot);
       state.returning = false;
@@ -535,9 +580,16 @@ async function go() {
         rentalId: r.rentalId, station: state.station, slot,
         rented_at: r.rented_at, due_at: r.due_at,
       };
+      const openedAt = Date.now();
       setMsg(`${slot}번 문이 열렸어요. 우산을 꺼내 주세요.`);
       await playDoorOpen(slot);
-      await wait(DOOR_HOLD_MS);
+      render();
+
+      // 아두이노 IR: 우산이 사라지면 auto_close → 그때 앱도 닫고 홈으로
+      const how = await waitForRentDoorClose(state.station, slot, openedAt);
+      if (how === "sensor") setMsg("우산을 꺼냈어요. 문이 닫히는 중이에요…");
+      else setMsg("보드 응답이 없어 문을 닫을게요.");
+
       await playDoorClose(slot);
       await refreshInventory();
       state.busy = false;
