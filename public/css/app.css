@@ -597,6 +597,41 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   margin-top: 8px;
   transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
 }
+.return-done-badge {
+  width: 56px;
+  height: 56px;
+  margin: 8px 0 18px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #1FA97A, #0E8A62);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 24px rgba(14, 138, 98, 0.28);
+}
+.return-done-card {
+  margin-top: 8px;
+}
+.return-done-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.return-done-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+.return-done-row strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  text-align: right;
+  letter-spacing: -0.02em;
+}
 .home-card-title {
   margin: 0 0 12px;
   font-size: 15px;

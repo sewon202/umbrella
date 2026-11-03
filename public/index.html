@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>숭실 우산 대여</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=37">
+<link rel="stylesheet" href="/css/app.css?v=38">
 </head>
 <body>
 <main>
 
 <section class="view on" id="v-login">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=37" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=38" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title">학번으로<br>바로 시작해요</h1>
@@ -36,7 +36,7 @@
 
 <section class="view" id="v-signup">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=37" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=38" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title">회원가입</h1>
@@ -68,7 +68,7 @@
 
 <section class="view" id="v-home">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=37" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=38" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
   <h1 class="hero-title"><span id="homeWho">안녕하세요</span></h1>
@@ -240,7 +240,7 @@
 
 <section class="view" id="v-settings">
   <div class="brand">
-    <img class="brand-logo" src="/img/ssu-mark.png?v=37" alt="숭실대학교" width="76" height="32">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=38" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">설정</div>
   </div>
   <div class="sheet settings-list">
@@ -255,6 +255,38 @@
   </div>
   <div class="stack-gap">
     <button class="btn ghost" id="settingsLogout" type="button">로그아웃</button>
+  </div>
+</section>
+
+<section class="view" id="v-return-done">
+  <div class="brand">
+    <img class="brand-logo" src="/img/ssu-mark.png?v=38" alt="숭실대학교" width="76" height="32">
+    <div class="brand-text">숭실 우산 대여</div>
+  </div>
+  <div class="return-done-badge" aria-hidden="true">✓</div>
+  <h1 class="hero-title">반납이<br>완료됐어요</h1>
+  <p class="hero-sub">이용해 주셔서 감사해요.</p>
+  <div class="sheet return-done-card">
+    <div class="return-done-row">
+      <span>이용 시간</span>
+      <strong id="returnDoneDuration">-</strong>
+    </div>
+    <div class="return-done-row">
+      <span>반납 위치</span>
+      <strong id="returnDonePlace">-</strong>
+    </div>
+    <div class="return-done-row">
+      <span>보관함</span>
+      <strong id="returnDoneSlot">-</strong>
+    </div>
+    <div class="return-done-row">
+      <span>반납 시각</span>
+      <strong id="returnDoneAt">-</strong>
+    </div>
+  </div>
+  <div class="stack-gap">
+    <button class="btn" id="returnDoneRent" type="button">다시 대여하기</button>
+    <button class="btn ghost" id="returnDoneHome" type="button" style="margin-top:10px">홈으로 돌아가기</button>
   </div>
 </section>
 
@@ -344,6 +376,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=37"></script>
+<script type="module" src="/js/app.js?v=38"></script>
 </body>
 </html>

@@ -60,8 +60,6 @@ const DOOR_MS = 720;
 const DOOR_HOLD_MS = 2200;
 const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
 const RETURN_DETECT_TIMEOUT_MS = 90000;
-const RETURN_BANNER_MS = 5000;
-const SLIDE_MS = 950;
 
 const state = {
   user: null,
@@ -71,7 +69,6 @@ const state = {
   openSlot: null,
   busy: false,
   returning: false,
-  returnBanner: false, // 반납 완료 배너 표시 중
   tab: "home",
 };
 
@@ -525,10 +522,12 @@ async function go() {
       state.selected = null;
       returnWaitResolve = null;
       setMsg("");
-      // 홈으로 이동 후, 대여시간 자리에 반납 완료 배너
-      goTab("home");
-      await waitFrames(3);
-      await playHomeReturnBanner(slot, rentalSnap);
+      showReturnDone({
+        rental: rentalSnap,
+        returnStation: state.station,
+        returnSlot: slot,
+        returnedAt: Date.now(),
+      });
       returnUiDone = true;
     } else {
       const r = await rentUmbrella(params);
@@ -545,7 +544,6 @@ async function go() {
   } catch (e) {
     state.openSlot = null;
     state.returning = false;
-    state.returnBanner = false;
     setMsg(friendlyError(e));
   } finally {
     state.busy = false;
@@ -556,52 +554,26 @@ async function go() {
       render();
     } else {
       tick();
+      syncUserChrome();
     }
   }
 }
 
-/** 홈: 반납 완료 멘트 → 대기 → 부드럽게 위로 슬라이드 아웃 */
-async function playHomeReturnBanner(slot, rentalSnap) {
-  const slotEl = $("homeTimerSlot");
-  const timer = $("homeTimer");
-  if (!slotEl || !timer) return;
+function showReturnDone({ rental, returnStation, returnSlot, returnedAt }) {
+  const rentedAt = rental && rental.rented_at ? Number(rental.rented_at) : null;
+  const endedAt = returnedAt || Date.now();
+  const usedMs = rentedAt ? Math.max(0, endedAt - rentedAt) : null;
+  const place = STATION_NAMES[returnStation] || STATION_QR[returnStation] || returnStation || "-";
+  const qr = STATION_QR[returnStation] || returnStation || "";
 
-  state.returnBanner = true;
-  timer.hidden = false;
-  timer.classList.add("is-return-done");
-  timer.classList.remove("over");
-  const tl = timer.querySelector(".tl");
-  const tv = timer.querySelector(".tv");
-  const ts = timer.querySelector(".ts");
-  const bar = timer.querySelector(".bar i");
-  if (tl) tl.textContent = "반납 완료";
-  if (tv) tv.textContent = "우산이 반납되었어요";
-  const place = rentalSnap
-    ? (STATION_NAMES[rentalSnap.station] || STATION_QR[rentalSnap.station] || rentalSnap.station)
-    : "";
-  if (ts) {
-    ts.textContent = place
-      ? `${place} · ${slot}번 칸에 잘 보관했어요`
-      : (slot ? `${slot}번 칸에 잘 보관했어요` : "이제 다시 대여할 수 있어요");
-  }
-  if (bar) bar.style.width = "100%";
+  $("returnDoneDuration").textContent = usedMs != null ? fmt(usedMs) : "-";
+  $("returnDonePlace").textContent = qr ? `${place} (${qr})` : place;
+  $("returnDoneSlot").textContent = returnSlot ? `${returnSlot}번 칸` : "-";
+  $("returnDoneAt").textContent = new Date(endedAt).toLocaleString("ko-KR", {
+    month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
 
-  slotEl.classList.remove("is-leaving");
-  await waitFrames(2);
-  slotEl.classList.add("has-timer");
-  await waitFrames(2);
-
-  await wait(RETURN_BANNER_MS);
-
-  slotEl.classList.add("is-leaving");
-  await wait(SLIDE_MS);
-
-  timer.hidden = true;
-  timer.classList.remove("is-return-done");
-  slotEl.classList.remove("has-timer", "is-leaving");
-  state.returnBanner = false;
-  syncUserChrome();
-  tick();
+  show("v-return-done");
 }
 
 function fmt(ms) {
@@ -624,10 +596,8 @@ function syncTimerSlot(slotId, timerId, forceShow) {
 function tick() {
   const r = state.user && state.user.activeRental;
   document.querySelectorAll(".timer").forEach((el) => {
-    // 홈 반납완료 배너 중에는 homeTimer 덮어쓰지 않음
-    if (el.id === "homeTimer" && state.returnBanner) return;
     if (!r) {
-      if (!(el.id === "homeTimer" && state.returnBanner)) el.hidden = true;
+      el.hidden = true;
       return;
     }
     el.hidden = false;
@@ -649,7 +619,7 @@ function tick() {
     }
   });
   syncTimerSlot("pickTimerSlot", "pickTimer", !!(r && $("pickTimer") && !$("pickTimer").hidden));
-  syncTimerSlot("homeTimerSlot", "homeTimer", !!(state.returnBanner || (r && $("homeTimer") && !$("homeTimer").hidden)));
+  syncTimerSlot("homeTimerSlot", "homeTimer", !!(r && $("homeTimer") && !$("homeTimer").hidden));
 }
 
 let qrToastTimer = null;
@@ -989,6 +959,8 @@ $("tabQr").onclick = () => goTab("qr");
 $("tabSettings").onclick = () => goTab("settings");
 $("homeRentBtn").onclick = () => goTab("qr");
 $("homeMapBtn").onclick = () => openCampusMap();
+$("returnDoneRent").onclick = () => goTab("qr");
+$("returnDoneHome").onclick = () => goTab("home");
 $("mapBack").onclick = () => goTab("home");
 $("mapSheetClose").onclick = () => hideMapSheet();
 $("mapSlotsBtn").onclick = () => toggleMapSlots();
