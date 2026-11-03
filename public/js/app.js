@@ -620,6 +620,10 @@ function tick() {
   });
   syncTimerSlot("pickTimerSlot", "pickTimer", !!(r && $("pickTimer") && !$("pickTimer").hidden));
   syncTimerSlot("homeTimerSlot", "homeTimer", !!(r && $("homeTimer") && !$("homeTimer").hidden));
+  const placeSlot = $("placeTimerSlot");
+  if (placeSlot) {
+    placeSlot.classList.toggle("has-timer", !!(r && $("placeTimer") && !$("placeTimer").hidden));
+  }
 }
 
 let qrToastTimer = null;

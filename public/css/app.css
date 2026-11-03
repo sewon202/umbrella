@@ -491,6 +491,20 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   transform: translate3d(0, -36%, 0);
   opacity: 0;
 }
+.place-timer-slot {
+  min-height: 0;
+  margin: 0 0 4px;
+}
+.place-timer-slot.has-timer {
+  margin-bottom: 18px;
+}
+.place-timer-slot .timer {
+  width: 100%;
+  margin: 0;
+}
+.place-hero {
+  margin-top: 4px;
+}
 .timer-compact {
   padding: 10px 14px 8px;
   border-radius: 14px;
