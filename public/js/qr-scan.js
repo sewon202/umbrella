@@ -107,6 +107,78 @@ function waitForVideo(video) {
   });
 }
 
+function nextFrame(video) {
+  return new Promise((resolve) => {
+    if (video && typeof video.requestVideoFrameCallback === "function") {
+      video.requestVideoFrameCallback(() => resolve());
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+/** iOS Safari object-fit 점프 방지 — 트랙 해상도 기준으로 cover 크기를 직접 고정 */
+export function fitQrVideoCover(video, stage) {
+  if (!video || !stage) return false;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const cw = stage.clientWidth;
+  const ch = stage.clientHeight;
+  if (!vw || !vh || !cw || !ch) return false;
+
+  const scale = Math.max(cw / vw, ch / vh);
+  const w = Math.ceil(vw * scale);
+  const h = Math.ceil(vh * scale);
+
+  video.style.position = "absolute";
+  video.style.inset = "auto";
+  video.style.right = "auto";
+  video.style.bottom = "auto";
+  video.style.minWidth = "0";
+  video.style.minHeight = "0";
+  video.style.maxWidth = "none";
+  video.style.maxHeight = "none";
+  video.style.objectFit = "fill";
+  video.style.width = `${w}px`;
+  video.style.height = `${h}px`;
+  video.style.left = `${Math.round((cw - w) / 2)}px`;
+  video.style.top = `${Math.round((ch - h) / 2)}px`;
+  video.style.transform = "translateZ(0)";
+  return true;
+}
+
+function clearVideoFit(video) {
+  if (!video) return;
+  video.style.position = "";
+  video.style.inset = "";
+  video.style.left = "";
+  video.style.top = "";
+  video.style.right = "";
+  video.style.bottom = "";
+  video.style.width = "";
+  video.style.height = "";
+  video.style.minWidth = "";
+  video.style.minHeight = "";
+  video.style.maxWidth = "";
+  video.style.maxHeight = "";
+  video.style.objectFit = "";
+  video.style.transform = "";
+  video.classList.remove("is-fitted");
+}
+
+async function lockCameraZoom(stream) {
+  const track = stream && stream.getVideoTracks()[0];
+  if (!track || typeof track.getCapabilities !== "function") return;
+  try {
+    const caps = track.getCapabilities() || {};
+    if (!("zoom" in caps)) return;
+    const min = typeof caps.zoom?.min === "number" ? caps.zoom.min : 1;
+    await track.applyConstraints({ advanced: [{ zoom: min }] });
+  } catch (_) {
+    /* zoom 미지원 */
+  }
+}
+
 function cropCenter(ctx, w, h, ratio = 0.55) {
   const side = Math.floor(Math.min(w, h) * ratio);
   const sx = Math.floor((w - side) / 2);
@@ -205,16 +277,26 @@ export async function startQrScan({ video, onResult, onError }) {
       throw new Error("HTTPS 또는 localhost에서만 카메라를 사용할 수 있어요.");
     }
     stream = await openCameraStream();
+    await lockCameraZoom(stream);
     videoEl.setAttribute("playsinline", "true");
     videoEl.setAttribute("webkit-playsinline", "true");
     videoEl.muted = true;
     videoEl.playsInline = true;
-    // 크기 확정 전에는 CSS opacity:0 — src 연결 직후 작은 프레임이 보이지 않음
+    videoEl.classList.remove("is-fitted");
+    clearVideoFit(videoEl);
+    // 크기·cover 확정 전에는 절대 보이지 않음 (CSS opacity/visibility)
     videoEl.srcObject = stream;
     await videoEl.play().catch(() => {});
     await waitForVideo(videoEl);
-    // 한 프레임 더 기다려 layout에 cover 크기 반영
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const stage = videoEl.closest(".qr-stage") || videoEl.parentElement;
+    // 첫 프레임 수신 후 cover 픽셀 크기를 고정 → 그다음 보여 줌
+    await nextFrame(videoEl);
+    fitQrVideoCover(videoEl, stage);
+    await nextFrame(videoEl);
+    fitQrVideoCover(videoEl, stage);
+    videoEl.classList.add("is-fitted");
+
     videoReady = true;
     await ensureDetector();
     if (!detector) await loadJsQR().catch(() => {});
@@ -256,5 +338,6 @@ export async function stopQrScan() {
   if (videoEl) {
     try { videoEl.pause(); } catch (_) {}
     videoEl.srcObject = null;
+    clearVideoFit(videoEl);
   }
 }

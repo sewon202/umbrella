@@ -16,7 +16,7 @@ import {
   RENT_LIMIT_MS,
   STATIONS,
 } from "/js/backend.js";
-import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn } from "/js/qr-scan.js?v=47";
+import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=48";
 import {
   initCampusMap,
   selectStation,
@@ -25,7 +25,7 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=47";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=48";
 
 initUiScale();
 
@@ -781,6 +781,9 @@ async function openQrCamera() {
     },
   });
   if (res.ok) {
+    // cover 픽셀 고정이 끝난 뒤에만 노출 (작게→확대 플래시 방지)
+    fitQrVideoCover($("qrVideo"), $("qrFrame"));
+    $("qrVideo").classList.add("is-fitted");
     $("qrFrame").classList.add("ready");
     setQrHint("대여소 QR을 네모 안에 맞춰 주세요");
   }
@@ -1078,6 +1081,12 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) closeQrCamera();
   else if ($("v-qr").classList.contains("on") && state.user) openQrCamera();
 });
+
+window.addEventListener("resize", () => {
+  if (!$("v-qr").classList.contains("on")) return;
+  if (!$("qrFrame").classList.contains("ready")) return;
+  fitQrVideoCover($("qrVideo"), $("qrFrame"));
+}, { passive: true });
 
 $("go").onclick = go;
 $("tagBtn").onclick = () => {
