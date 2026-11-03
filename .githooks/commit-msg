@@ -1,0 +1,4 @@
+#!/bin/sh
+# Strip Cursor attribution trailers injected by agent tooling.
+tmp="$1.tmp.$$"
+grep -viE "^[Cc]o-authored-by:[[:space:]]*Cursor|^[Mm]ade-[Ww]ith:[[:space:]]*Cursor" "$1" > "$tmp" && mv "$tmp" "$1"
