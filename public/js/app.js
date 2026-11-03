@@ -9,6 +9,7 @@ import {
   getMyActiveRental,
   rentUmbrella,
   returnUmbrella,
+  getRecentDeviceEvent,
   friendlyError,
   MAX_HW_SLOT,
   TOTAL_SLOTS,
@@ -49,6 +50,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const DOOR_MS = 720;
 const DOOR_HOLD_MS = 2200;
 const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
+const RETURN_DETECT_TIMEOUT_MS = 90000;
 
 const state = {
   user: null,
@@ -60,6 +62,9 @@ const state = {
   returning: false,
   tab: "home",
 };
+
+/** 반납 대기 중 수동 확인(우산을 넣었어요) resolve */
+let returnWaitResolve = null;
 
 function authHash() {
   const k = (location.hash || "").replace(/^#/, "").toLowerCase();
@@ -327,31 +332,37 @@ function doorEl(slot) {
 
 function render() {
   const mine = myRentalHere();
-  const returning = !!mine;
+  const isReturnPick = !!mine; // 반납할 대여가 있으면 반납 선택 모드
   const cab = $("cab");
   cab.innerHTML = "";
-  $("pickTitle").textContent = returning ? "우산 반납" : "우산 번호 선택";
-  $("pickDesc").textContent = returning
+  $("pickTitle").textContent = isReturnPick ? "우산 반납" : "우산 번호 선택";
+  $("pickDesc").textContent = isReturnPick
     ? "비어 있는 칸을 골라 우산을 넣어 주세요."
     : `1~${MAX_HW_SLOT}번 칸만 하드웨어와 연결돼 있어요.`;
 
   for (let i = 1; i <= TOTAL_SLOTS; i++) {
     const hw = i <= MAX_HW_SLOT;
-    // 대여=보관중(in), 반납=빈 칸(out)
-    const usable = hw && (returning ? state.slots[i] === "out" : state.slots[i] === "in");
+    // 대여: 보관중(in)만 선택 / 반납: HW 칸은 모두 눌러볼 수 있음(보관중은 버튼 비활성)
+    const selectable = hw && !state.busy && !state.returning && (
+      isReturnPick ? true : state.slots[i] === "in"
+    );
+    const canAct = isReturnPick
+      ? state.slots[i] === "out"
+      : state.slots[i] === "in";
     const wrap = document.createElement("div");
     wrap.className = "door-wrap";
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.slot = String(i);
     b.className = `door${state.selected === i ? " sel" : ""}${state.openSlot === i ? " open" : ""}`;
-    b.disabled = !usable || state.busy || state.returning;
-    const label = slotLabel(i, returning);
+    b.disabled = !selectable;
+    const label = slotLabel(i, isReturnPick);
     b.setAttribute("aria-label", `${i}번 ${label}`);
     b.innerHTML = `<span class="n">${i}</span><span class="t">${label}</span>`;
     b.onclick = () => {
+      if (!selectable) return;
       state.selected = i;
-      setMsg("");
+      setMsg(isReturnPick && !canAct ? "이 칸에는 이미 우산이 있어 반납할 수 없어요." : "");
       render();
     };
     wrap.appendChild(b);
@@ -359,11 +370,51 @@ function render() {
   }
 
   const g = $("go");
-  g.disabled = !state.selected || state.busy || state.returning;
-  g.textContent = state.selected
-    ? mine ? `${state.selected}번 문 열고 반납하기` : `${state.selected}번 우산 대여하기`
-    : "번호를 선택해 주세요";
+  const sel = state.selected;
+  const selCanReturn = sel && state.slots[sel] === "out";
+  const selCanRent = sel && state.slots[sel] === "in";
+  if (isReturnPick) {
+    g.disabled = !sel || state.busy || state.returning || !selCanReturn;
+    g.textContent = !sel
+      ? "번호를 선택해 주세요"
+      : selCanReturn
+        ? `${sel}번 문 열고 반납하기`
+        : "반납할 수 없는 칸이에요";
+  } else {
+    g.disabled = !sel || state.busy || state.returning || !selCanRent;
+    g.textContent = sel ? `${sel}번 우산 대여하기` : "번호를 선택해 주세요";
+  }
   syncPickActions();
+}
+
+/** RFID+IR 인식 또는 수동 확인까지 대기 */
+async function waitForReturnConfirm(station, slot, sinceMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (how) => {
+      if (settled) return;
+      settled = true;
+      returnWaitResolve = null;
+      resolve(how);
+    };
+    returnWaitResolve = () => finish("manual");
+
+    (async () => {
+      const start = Date.now();
+      while (!settled && Date.now() - start < RETURN_DETECT_TIMEOUT_MS) {
+        try {
+          const ev = await getRecentDeviceEvent({ station, slot, since: sinceMs });
+          const act = String(ev?.payload?.action || ev?.payload?.source || "");
+          if (ev && (ev.kind === "return_ok" || (ev.kind === "servo" && /auto_close_return/i.test(act)))) {
+            finish("sensor");
+            return;
+          }
+        } catch (_) { /* keep waiting */ }
+        await wait(1000);
+      }
+      if (!settled) finish("timeout");
+    })();
+  });
 }
 
 /** DOM 유지 + CSS transition 으로 자연스럽게 열기 */
@@ -403,7 +454,12 @@ async function go() {
   if (!state.selected || state.busy) return;
   const slot = state.selected;
   const mine = myRentalHere();
-  const isReturn = !!mine; // 이 대여소에서 활성 대여가 있으면 반납(빈 칸)
+  const isReturn = !!mine;
+  if (isReturn && state.slots[slot] !== "out") {
+    setMsg("이 칸에는 이미 우산이 있어 반납할 수 없어요.");
+    render();
+    return;
+  }
   const params = { station: state.station, slot, studentId: state.user.id, uid: state.user.uid };
 
   state.busy = true;
@@ -412,11 +468,25 @@ async function go() {
 
   try {
     if (isReturn) {
+      const openedAt = Date.now();
       await returnUmbrella(params);
+      state.user.activeRental = null;
       state.returning = true;
+      state.busy = false;
       syncPickActions();
-      setMsg(`${slot}번 문이 열렸어요. 우산을 넣고 문을 닫아 주세요.`);
+      setMsg(`${slot}번 문이 열렸어요. 우산을 걸어 넣어 주세요.`);
       await playDoorOpen(slot);
+      render();
+
+      const how = await waitForReturnConfirm(state.station, slot, openedAt);
+      if (how === "sensor") setMsg("우산이 인식됐어요. 문을 닫을게요.");
+      else if (how === "manual") setMsg("확인됐어요. 문을 닫을게요.");
+      else setMsg("대기 시간이 지났어요. 문을 닫을게요.");
+
+      await playDoorClose(slot);
+      state.returning = false;
+      syncPickActions();
+      setMsg("반납이 완료됐어요.");
     } else {
       const r = await rentUmbrella(params);
       state.user.activeRental = {
@@ -431,10 +501,12 @@ async function go() {
     await refreshInventory();
   } catch (e) {
     state.openSlot = null;
+    state.returning = false;
     setMsg(friendlyError(e));
   } finally {
     state.busy = false;
     state.selected = null;
+    returnWaitResolve = null;
     tick();
     render();
   }
@@ -854,14 +926,9 @@ document.addEventListener("visibilitychange", () => {
 });
 
 $("go").onclick = go;
-$("tagBtn").onclick = async () => {
-  state.returning = false;
-  syncPickActions();
-  if (state.openSlot) await playDoorClose(state.openSlot);
-  try { await refreshInventory(); } catch (_) {}
-  tick();
-  setMsg("반납이 완료됐어요.");
-  render();
+$("tagBtn").onclick = () => {
+  // 임시 수동 확인 — 보드 RFID+IR 인식이 오면 자동으로도 닫힘
+  if (typeof returnWaitResolve === "function") returnWaitResolve();
 };
 
 window.addEventListener("hashchange", async () => {

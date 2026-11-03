@@ -201,6 +201,7 @@ function createLocalBackend() {
     async getDevicePresence(station = "A1") {
       return api("GET", `/api/device/presence?station=${station}`);
     },
+    async getRecentDeviceEvent() { return null; },
     async debugRecent() { return api("GET", "/api/debug/recent"); },
     async health() { return api("GET", "/api/health"); },
   };
@@ -392,7 +393,8 @@ function createFirebaseBackend() {
           });
         }
         tx.set(sRef, { activeRental: null, updated_at: now }, { merge: true });
-        return newCommand(tx, { station, slot, studentId, action: "open", now });
+        // 반납 전용: 보드가 RFID+IR 인식 후 자동 닫힘
+        return newCommand(tx, { station, slot, studentId, action: "open_return", now });
       });
 
       return { ok: true, id: cmdId, station, slot };
@@ -500,6 +502,21 @@ function createFirebaseBackend() {
       };
     },
 
+    /** 반납 감지(return_ok 등) — since 이후 해당 station/slot 이벤트 */
+    async getRecentDeviceEvent({ station, slot, since = 0 } = {}) {
+      const snap = await getDocs(
+        query(collection(db, "device_events"), orderBy("created_at", "desc"), limit(25))
+      );
+      for (const d of snap.docs) {
+        const row = docData(d);
+        if (row.station !== station) continue;
+        if (Number(row.slot) !== Number(slot)) continue;
+        if (Number(row.created_at) < Number(since)) continue;
+        return row;
+      }
+      return null;
+    },
+
     async debugRecent() {
       const [cmds, evs, umbs] = await Promise.all([
         getDocs(query(collection(db, "commands"), orderBy("created_at", "desc"), limit(10))),
@@ -541,6 +558,7 @@ export const seedInventory = () => backend.seedInventory();
 export const fetchNextCommand = (s) => backend.fetchNextCommand(s);
 export const markCommandDone = (id) => backend.markCommandDone(id);
 export const postDeviceEvent = (p) => backend.postDeviceEvent(p);
+export const getRecentDeviceEvent = (p) => backend.getRecentDeviceEvent(p);
 export const getDevicePresence = (s) => backend.getDevicePresence(s);
 export const debugRecent = () => backend.debugRecent();
 export const health = () => backend.health();

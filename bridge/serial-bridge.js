@@ -191,9 +191,10 @@ async function main() {
 
   const handlers = [
     [/^PONG\b/i, () => { lastPong = Date.now(); }],
-    [/^DONE\s+OPEN\s+\d+/i, () => finish("mcu")],
+    [/^DONE\s+OPEN(?:_RETURN)?\s+\d+/i, () => finish("mcu")],
     [/^EVENT\s+RFID\s+(\d+)\s+(\S+)/i, (m) => sendEvent(Number(m[1]), "rfid", { uid: m[2] })],
     [/^EVENT\s+IR\s+(\d+)/i, (m) => sendEvent(Number(m[1]), "ir", { held_ms: 1000 })],
+    [/^EVENT\s+RETURN_OK\s+(\d+)/i, (m) => sendEvent(Number(m[1]), "return_ok", { source: "rfid_ir" })],
     [/^EVENT\s+SERVO\s+(\d+)\s+(\S+)/i, (m) => sendEvent(Number(m[1]), "servo", { action: m[2], deg: 90 })],
   ];
 
@@ -229,7 +230,9 @@ async function main() {
         id: body.id,
         timer: setTimeout(() => finish("timeout"), CMD_TIMEOUT_MS),
       };
-      send(`OPEN ${body.slot}`);
+      const action = String(body.action || "open");
+      if (action === "open_return") send(`OPEN_RETURN ${body.slot}`);
+      else send(`OPEN ${body.slot}`);
     } catch (e) {
       console.error("[poll]", e.message);
     }

@@ -181,12 +181,18 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 .btn.text:active { color: var(--ssu-deep); }
 
 .stack-gap { margin-top: auto; padding-top: 24px; }
-.stack-gap .btn + .btn,
-.stack-gap .action-slot + .action-slot { margin-top: 10px; }
-.action-slot {
+.stack-gap .btn + .btn { margin-top: 10px; }
+/* 주 버튼 ↔ 확인 버튼이 같은 자리에서 크로스페이드 (중앙 UI 고정) */
+.action-stage {
+  position: relative;
   min-height: 54px;
-  display: grid;
-  align-items: stretch;
+}
+.action-stage .action-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  width: 100%;
 }
 
 .top {
@@ -372,7 +378,7 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 }
 .pick-timer-slot {
   min-height: 58px;
-  margin-bottom: 4px;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
 }
@@ -409,6 +415,9 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.pick-head {
+  margin-top: 4px;
+}
 .pick-head .section-title { margin-bottom: 2px; }
 .pick-head .section-desc { margin-bottom: 0; }
 .pick-stage {
@@ -430,8 +439,7 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 .pick-actions {
   margin-top: 8px;
   padding-top: 8px;
-  /* 주 버튼 + 확인 버튼 자리 항상 확보 → 반납 시 중앙 보관함 고정 */
-  min-height: calc(54px * 2 + 10px);
+  min-height: 54px; /* 버튼 1칸만 — 크로스페이드로 교체 */
 }
 
 .footer-link {

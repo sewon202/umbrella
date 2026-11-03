@@ -60,12 +60,16 @@ const unsigned long OPEN_MAX_MS = 25000;         // 안전: 강제 닫힘
 const int servo1Pin = 5;
 const int servo2Pin = 6;
 
-// 문 자동닫힘 상태 (우산 꺼냄: 감지→미감지→대기→닫힘)
+// 문 자동닫힘 상태
+//  - 대여(꺼냄): 감지→미감지→대기→닫힘
+//  - 반납(넣음): RFID+IR 동시 인식→대기→닫힘
 enum DoorWatch : uint8_t {
   DW_IDLE = 0,
-  DW_WAIT_PRESENT, // 우산이 센서에 보이는지 대기
-  DW_WAIT_GONE,    // 우산이 사라질 때까지 대기
-  DW_WAIT_DELAY,   // 사라진 뒤 닫기 전 딜레이
+  DW_WAIT_PRESENT,     // 대여: 우산이 센서에 보이는지 대기
+  DW_WAIT_GONE,        // 대여: 우산이 사라질 때까지 대기
+  DW_WAIT_DELAY,       // 대여: 사라진 뒤 닫기 전 딜레이
+  DW_RET_WAIT_DETECT,  // 반납: RFID 태깅 + IR 감지 대기
+  DW_RET_WAIT_DELAY,   // 반납: 인식 후 닫기 전 딜레이
 };
 
 MFRC522 mfrc522_1(SS_1_PIN, RST_1_PIN);
@@ -95,6 +99,9 @@ DoorWatch doorWatch1 = DW_IDLE, doorWatch2 = DW_IDLE;
 unsigned long doorWatchAt1 = 0, doorWatchAt2 = 0;
 unsigned long doorOpenAt1 = 0, doorOpenAt2 = 0;
 unsigned long irGoneSince1 = 0, irGoneSince2 = 0;
+bool returnRfidOk1 = false, returnRfidOk2 = false;
+unsigned long returnIrSince1 = 0, returnIrSince2 = 0;
+String returnUid1 = "", returnUid2 = "";
 
 bool irIsClose(int pin) {
   return IR_ACTIVE_LOW ? (digitalRead(pin) == LOW) : (digitalRead(pin) == HIGH);
@@ -183,7 +190,24 @@ void armAutoCloseWatch(int slot) {
   at = millis();
   opened = millis();
   goneSince = 0;
-  Serial.print("[DOOR] watch start slot ");
+  Serial.print("[DOOR] rent-watch start slot ");
+  Serial.println(slot);
+}
+
+void armReturnWatch(int slot) {
+  DoorWatch &st = (slot == 2) ? doorWatch2 : doorWatch1;
+  unsigned long &at = (slot == 2) ? doorWatchAt2 : doorWatchAt1;
+  unsigned long &opened = (slot == 2) ? doorOpenAt2 : doorOpenAt1;
+  bool &rfidOk = (slot == 2) ? returnRfidOk2 : returnRfidOk1;
+  unsigned long &irSince = (slot == 2) ? returnIrSince2 : returnIrSince1;
+  String &uid = (slot == 2) ? returnUid2 : returnUid1;
+  st = DW_RET_WAIT_DETECT;
+  at = millis();
+  opened = millis();
+  rfidOk = false;
+  irSince = 0;
+  uid = "";
+  Serial.print("[DOOR] return-watch start slot ");
   Serial.println(slot);
 }
 
@@ -192,12 +216,34 @@ bool doorWatchActive(int slot) {
   return st != DW_IDLE;
 }
 
-/** 우산 꺼냄: 감지됨 → 미감지 유지 → 딜레이 → 부드럽게 닫힘 */
+bool doorReturnWatchActive(int slot) {
+  DoorWatch st = (slot == 2) ? doorWatch2 : doorWatch1;
+  return st == DW_RET_WAIT_DETECT || st == DW_RET_WAIT_DELAY;
+}
+
+void noteReturnRfid(int slot, const String& uid) {
+  if (!doorReturnWatchActive(slot)) return;
+  DoorWatch st = (slot == 2) ? doorWatch2 : doorWatch1;
+  if (st != DW_RET_WAIT_DETECT) return;
+  bool &rfidOk = (slot == 2) ? returnRfidOk2 : returnRfidOk1;
+  String &saved = (slot == 2) ? returnUid2 : returnUid1;
+  rfidOk = true;
+  saved = uid;
+  Serial.print("[DOOR] return RFID ok slot ");
+  Serial.print(slot);
+  Serial.print(" UID=");
+  Serial.println(uid);
+  reportEvent(slot, "rfid", uid);
+}
+
+/** 우산 꺼냄/반납 자동 닫힘 */
 void updateAutoCloseWatch(int slot) {
   DoorWatch &st = (slot == 2) ? doorWatch2 : doorWatch1;
   unsigned long &at = (slot == 2) ? doorWatchAt2 : doorWatchAt1;
   unsigned long &opened = (slot == 2) ? doorOpenAt2 : doorOpenAt1;
   unsigned long &goneSince = (slot == 2) ? irGoneSince2 : irGoneSince1;
+  bool &rfidOk = (slot == 2) ? returnRfidOk2 : returnRfidOk1;
+  unsigned long &irSince = (slot == 2) ? returnIrSince2 : returnIrSince1;
   if (st == DW_IDLE) return;
 
   const int irPin = irPinForSlot(slot);
@@ -209,11 +255,42 @@ void updateAutoCloseWatch(int slot) {
     Serial.println(slot);
     softCloseDoor(slot);
     recoverRfid();
-    reportEvent(slot, "servo", "auto_close_timeout");
+    reportEvent(slot, "servo", st >= DW_RET_WAIT_DETECT ? "auto_close_return_timeout" : "auto_close_timeout");
     st = DW_IDLE;
     return;
   }
 
+  // ----- 반납: RFID + IR -----
+  if (st == DW_RET_WAIT_DETECT) {
+    if (present) {
+      if (irSince == 0) irSince = now;
+    } else {
+      irSince = 0;
+    }
+    const bool irOk = present && irSince > 0 && (now - irSince >= IR_HOLD_MS);
+    if (rfidOk && irOk) {
+      Serial.print("[DOOR] return detected slot ");
+      Serial.println(slot);
+      reportEvent(slot, "return_ok", "rfid_ir");
+      st = DW_RET_WAIT_DELAY;
+      at = now;
+    }
+    return;
+  }
+
+  if (st == DW_RET_WAIT_DELAY) {
+    if (now - at >= AUTO_CLOSE_DELAY_MS) {
+      Serial.print("[DOOR] return soft close slot ");
+      Serial.println(slot);
+      softCloseDoor(slot);
+      recoverRfid();
+      reportEvent(slot, "servo", "auto_close_return");
+      st = DW_IDLE;
+    }
+    return;
+  }
+
+  // ----- 대여: 꺼냄 -----
   if (st == DW_WAIT_PRESENT) {
     if (present) {
       Serial.print("[DOOR] umbrella present slot ");
@@ -222,7 +299,6 @@ void updateAutoCloseWatch(int slot) {
       at = now;
       goneSince = 0;
     } else if (now - at >= OPEN_PRESENT_WAIT_MS) {
-      // 열었을 때 이미 비어 있음 → 바로 사라짐 대기로
       Serial.print("[DOOR] already empty slot ");
       Serial.println(slot);
       st = DW_WAIT_GONE;
@@ -249,7 +325,6 @@ void updateAutoCloseWatch(int slot) {
   }
 
   if (st == DW_WAIT_DELAY) {
-    // 닫기 전에 다시 감지되면(손/우산) 대기 연장
     if (present) {
       st = DW_WAIT_GONE;
       goneSince = 0;
@@ -572,6 +647,9 @@ void reportEvent(int slot, const char* kind, const String& extra) {
     } else if (strcmp(kind, "ir") == 0) {
       Serial.print("EVENT IR ");
       Serial.println(slot);
+    } else if (strcmp(kind, "return_ok") == 0) {
+      Serial.print("EVENT RETURN_OK ");
+      Serial.println(slot);
     } else if (strcmp(kind, "servo") == 0) {
       Serial.print("EVENT SERVO ");
       Serial.print(slot);
@@ -583,13 +661,13 @@ void reportEvent(int slot, const char* kind, const String& extra) {
   reportEventFirebase(slot, kind, extra);
 }
 
-void executeOpen(int slot) {
+void executeOpen(int slot, bool isReturn) {
   if (slot != 1 && slot != 2) return;
-  // 문은 열린 채로 유지 → IR로 우산 꺼냄 확인 후 자동 부드럽게 닫힘
   softOpenDoor(slot);
   recoverRfid();
-  reportEvent(slot, "servo", "open");
-  armAutoCloseWatch(slot);
+  reportEvent(slot, "servo", isReturn ? "open_return" : "open");
+  if (isReturn) armReturnWatch(slot);
+  else armAutoCloseWatch(slot);
 }
 
 String epochMsString() {
@@ -625,6 +703,8 @@ void reportEventFirebase(int slot, const char* kind, const String& extra) {
     payloadFields = String("\"uid\":{\"stringValue\":\"") + extra + "\"}";
   } else if (strcmp(kind, "ir") == 0) {
     payloadFields = "\"held_ms\":{\"integerValue\":\"1000\"}";
+  } else if (strcmp(kind, "return_ok") == 0) {
+    payloadFields = String("\"source\":{\"stringValue\":\"") + extra + "\"}";
   } else {
     payloadFields = String("\"action\":{\"stringValue\":\"") + extra +
                     "\"},\"deg\":{\"integerValue\":\"90\"}";
@@ -768,13 +848,30 @@ void pollNextCommandFirebase() {
     return;
   }
 
+  // action stringValue (open | open_return)
+  bool isReturn = false;
+  int actPos = resp.indexOf("\"action\"", docPos);
+  if (actPos >= 0) {
+    int sv = resp.indexOf("\"stringValue\":\"", actPos);
+    if (sv >= 0 && sv - actPos < 80) {
+      sv += 15;
+      int se = resp.indexOf('"', sv);
+      if (se > sv) {
+        String act = resp.substring(sv, se);
+        isReturn = (act == "open_return");
+      }
+    }
+  }
+
   Serial.print("[CMD/WIFI] id=");
   Serial.print(docId);
   Serial.print(" slot=");
-  Serial.println(slot);
+  Serial.print(slot);
+  Serial.print(" action=");
+  Serial.println(isReturn ? "open_return" : "open");
 
   cmdBusy = true;
-  executeOpen((int)slot);
+  executeOpen((int)slot, isReturn);
   markCommandDone(docId);
   cmdBusy = false;
 }
@@ -790,6 +887,24 @@ void handleSerialLine(String line) {
     return;
   }
 
+  if (line.startsWith("OPEN_RETURN ")) {
+    if (cmdBusy) {
+      Serial.println("[CMD] busy, ignore serial OPEN_RETURN");
+      return;
+    }
+    int slot = line.substring(12).toInt();
+    lastPingMs = millis();
+    wiredMode = true;
+    Serial.print("ACK OPEN_RETURN ");
+    Serial.println(slot);
+    cmdBusy = true;
+    executeOpen(slot, true);
+    cmdBusy = false;
+    Serial.print("DONE OPEN_RETURN ");
+    Serial.println(slot);
+    return;
+  }
+
   if (line.startsWith("OPEN ")) {
     if (cmdBusy) {
       Serial.println("[CMD] busy, ignore serial OPEN");
@@ -801,7 +916,7 @@ void handleSerialLine(String line) {
     Serial.print("ACK OPEN ");
     Serial.println(slot);
     cmdBusy = true;
-    executeOpen(slot);
+    executeOpen(slot, false);
     cmdBusy = false;
     Serial.print("DONE OPEN ");
     Serial.println(slot);
@@ -843,6 +958,12 @@ bool handleReader(MFRC522 &rfid, unsigned long &lastTagMs,
 
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
+
+  // 반납 감시 중이면 문 추가 open 없이 UID만 기록
+  if (doorReturnWatchActive(slot)) {
+    noteReturnRfid(slot, uid);
+    return true;
+  }
 
   softOpenDoor(slot);
   recoverRfid();
