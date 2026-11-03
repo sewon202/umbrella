@@ -56,6 +56,19 @@ export const STATIONS = [
 /** 세 핀 중심 — 실제 화면은 setBounds 로 맞춤 */
 export const CAMPUS_CENTER = { lat: 37.49627, lng: 126.95725, zoom: 17 };
 
+/** 인쇄용 고유번호 (없으면 내부 code) */
+export function stationQr(code) {
+  const s = STATIONS.find((x) => x.code === code);
+  return (s && (s.qr || s.code)) || code || "—";
+}
+
+/** UI 표시: A7482 · 학생회관 정문 */
+export function stationLabel(code) {
+  const s = STATIONS.find((x) => x.code === code);
+  if (!s) return code || "—";
+  return `${s.qr || s.code} · ${s.name}`;
+}
+
 const isConfigured =
   fb.projectId && fb.projectId !== "YOUR_PROJECT_ID" &&
   fb.apiKey && fb.apiKey !== "YOUR_API_KEY";

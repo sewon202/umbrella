@@ -32,12 +32,14 @@
 <script type="module">
 import {
   getMode, loginDevice, listAllUmbrellas, listStudents, listActiveRentals,
-  setUmbrellaStatus, seedInventory, friendlyError,
+  setUmbrellaStatus, seedInventory, friendlyError, stationQr, stationLabel,
 } from "/js/backend.js";
 
 const $ = (id) => document.getElementById(id);
 const fmt = (ts) => (ts ? new Date(ts).toLocaleString("ko-KR") : "-");
 const esc = (v) => String(v ?? "-").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const place = (code) => esc(stationLabel(code));
+const placeSlot = (code, slot) => esc(`${stationQr(code)}-${slot}`);
 
 function table(headers, rows, emptyText) {
   const head = headers.map((h) => `<th>${h}</th>`).join("");
@@ -59,7 +61,7 @@ async function loadAll() {
     umbs.map((u) => {
       const st = u.status === "out" ? "out" : "in";
       return [
-        esc(u.id), esc(u.station), esc(u.slot),
+        esc(u.id), place(u.station), esc(u.slot),
         `<span class="pill ${st}">${st === "in" ? "보관중" : "대여중"}</span>`,
         esc(u.rented_by),
         `<button data-id="${u.station}|${u.slot}|in">보관</button>
@@ -84,14 +86,16 @@ async function loadAll() {
     ["학번", "이름", "가입", "활성 대여"],
     users.map((u) => [
       esc(u.studentId), esc(u.name), fmt(u.created_at),
-      u.activeRental ? `${esc(u.activeRental.station)}-${esc(u.activeRental.slot)} · ${fmt(u.activeRental.rented_at)}` : "-",
+      u.activeRental
+        ? `${placeSlot(u.activeRental.station, u.activeRental.slot)} · ${fmt(u.activeRental.rented_at)}`
+        : "-",
     ]),
     "사용자 없음 (앱에서 회원가입)"
   );
 
   $("rentBox").innerHTML = table(
     ["학번", "위치", "대여시각", "기한"],
-    rents.map((r) => [esc(r.studentId), `${esc(r.station)}-${esc(r.slot)}`, fmt(r.rented_at), fmt(r.due_at)]),
+    rents.map((r) => [esc(r.studentId), placeSlot(r.station, r.slot), fmt(r.rented_at), fmt(r.due_at)]),
     "활성 대여 없음"
   );
 }

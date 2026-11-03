@@ -76,11 +76,13 @@
 <script type="module">
 import {
   getMode, loginDevice, openDoor, health, debugRecent, getDevicePresence, friendlyError,
-  STATIONS, MAX_HW_SLOT,
+  STATIONS, MAX_HW_SLOT, stationQr, stationLabel,
 } from "/js/backend.js";
 
 const $ = (id) => document.getElementById(id);
-$("station").innerHTML = STATIONS.map((s) => `<option value="${s.code}">${s.code} · ${s.name}</option>`).join("");
+$("station").innerHTML = STATIONS.map((s) =>
+  `<option value="${s.code}">${s.qr || s.code} · ${s.name}</option>`
+).join("");
 $("slot").innerHTML = Array.from({ length: MAX_HW_SLOT }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
 
 let authed = false;
@@ -116,7 +118,7 @@ function renderPresence(p) {
     $("statusHint").textContent = "마지막 하트비트가 오래됐어요. WiFi/전원/브리지를 확인하세요.";
   }
 
-  $("stStation").textContent = (p && p.station) || $("station").value;
+  $("stStation").textContent = stationLabel((p && p.station) || $("station").value);
   const link = (p && p.link) || null;
   if (link === "wifi") {
     $("stLink").innerHTML = `<span class="link-pill wifi">WiFi</span>`;
