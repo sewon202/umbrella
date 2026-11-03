@@ -125,6 +125,48 @@ function setTabbar(visible) {
   document.body.classList.toggle("no-tab", !visible);
 }
 
+/**
+ * 등장/퇴장 모션. reserve=true 이면 레이아웃 자리를 유지해 중앙 UI가 안 밀림.
+ */
+function setMotion(el, visible, { reserve = false } = {}) {
+  if (!el) return;
+  el.classList.add("ui-motion");
+  if (visible) {
+    el.hidden = false;
+    el.classList.remove("ui-out");
+    void el.offsetWidth;
+    el.classList.add("ui-in");
+    el.setAttribute("aria-hidden", "false");
+    if (el.tagName === "BUTTON") el.tabIndex = 0;
+  } else {
+    el.classList.remove("ui-in");
+    el.classList.add("ui-out");
+    el.setAttribute("aria-hidden", "true");
+    if (el.tagName === "BUTTON") el.tabIndex = -1;
+    if (!reserve) {
+      const hide = () => {
+        if (el.classList.contains("ui-out")) el.hidden = true;
+      };
+      el.addEventListener("transitionend", hide, { once: true });
+      setTimeout(hide, 320);
+    } else {
+      el.hidden = false;
+    }
+  }
+}
+
+function syncPickActions() {
+  const go = $("go");
+  const tag = $("tagBtn");
+  if (state.returning) {
+    setMotion(go, false, { reserve: true });
+    setMotion(tag, true, { reserve: true });
+  } else {
+    setMotion(go, true, { reserve: true });
+    setMotion(tag, false, { reserve: true });
+  }
+}
+
 function setTabActive(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((el) => {
@@ -182,7 +224,7 @@ async function enterStation(code) {
   state.selected = null;
   state.openSlot = null;
   state.returning = false;
-  $("tagBtn").hidden = true;
+  syncPickActions();
   $("placeErr").textContent = "";
   syncUserChrome();
   try { await refreshInventory(); } catch (_) {}
@@ -259,7 +301,7 @@ async function logout() {
   Object.assign(state, {
     user: null, selected: null, openSlot: null, returning: false, busy: false, tab: "home",
   });
-  $("tagBtn").hidden = true;
+  syncPickActions();
   setTabbar(false);
   history.replaceState(null, "", location.pathname + location.search);
   show("v-login");
@@ -321,6 +363,7 @@ function render() {
   g.textContent = state.selected
     ? mine ? `${state.selected}번 문 열고 반납하기` : `${state.selected}번 우산 대여하기`
     : "번호를 선택해 주세요";
+  syncPickActions();
 }
 
 /** DOM 유지 + CSS transition 으로 자연스럽게 열기 */
@@ -371,7 +414,7 @@ async function go() {
     if (isReturn) {
       await returnUmbrella(params);
       state.returning = true;
-      $("tagBtn").hidden = false;
+      syncPickActions();
       setMsg(`${slot}번 문이 열렸어요. 우산을 넣고 문을 닫아 주세요.`);
       await playDoorOpen(slot);
     } else {
@@ -813,8 +856,8 @@ document.addEventListener("visibilitychange", () => {
 $("go").onclick = go;
 $("tagBtn").onclick = async () => {
   state.returning = false;
+  syncPickActions();
   if (state.openSlot) await playDoorClose(state.openSlot);
-  $("tagBtn").hidden = true;
   try { await refreshInventory(); } catch (_) {}
   tick();
   setMsg("반납이 완료됐어요.");

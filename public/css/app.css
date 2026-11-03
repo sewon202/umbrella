@@ -18,7 +18,33 @@
   --radius: 20px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
+  --ui-dur: 0.28s;
+  --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: light;
+}
+
+/* 버튼·패널 등장/퇴장 (자리 유지 → 중앙 UI가 안 밀림) */
+.ui-motion {
+  transition:
+    opacity var(--ui-dur) var(--ui-ease),
+    transform var(--ui-dur) var(--ui-ease);
+  will-change: opacity, transform;
+}
+.ui-motion.ui-in {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.ui-motion.ui-out {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+}
+.btn.ui-motion.ui-out,
+.btn.ui-motion.ui-out:disabled {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
 }
 
 * { box-sizing: border-box; }
@@ -132,7 +158,10 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   cursor: pointer;
   background: var(--ssu);
   color: #fff;
-  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  transition:
+    transform var(--ui-dur) var(--ui-ease),
+    background 0.15s ease,
+    opacity var(--ui-dur) var(--ui-ease);
 }
 .btn:active:not(:disabled) { transform: scale(0.98); background: var(--ssu-deep); }
 .btn:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -152,7 +181,13 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 .btn.text:active { color: var(--ssu-deep); }
 
 .stack-gap { margin-top: auto; padding-top: 24px; }
-.stack-gap .btn + .btn { margin-top: 10px; }
+.stack-gap .btn + .btn,
+.stack-gap .action-slot + .action-slot { margin-top: 10px; }
+.action-slot {
+  min-height: 54px;
+  display: grid;
+  align-items: stretch;
+}
 
 .top {
   display: flex;
@@ -377,19 +412,27 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
 .pick-head .section-title { margin-bottom: 2px; }
 .pick-head .section-desc { margin-bottom: 0; }
 .pick-stage {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex: 1 1 auto;
+  position: relative;
   min-height: 220px;
   margin: 12px 0;
 }
 .pick-stage .cab {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   width: 100%;
   margin: 0;
 }
 .pick-view .msg { min-height: 40px; margin: 0; }
-.pick-actions { margin-top: 8px; padding-top: 8px; }
+.pick-actions {
+  margin-top: 8px;
+  padding-top: 8px;
+  /* 주 버튼 + 확인 버튼 자리 항상 확보 → 반납 시 중앙 보관함 고정 */
+  min-height: calc(54px * 2 + 10px);
+}
 
 .footer-link {
   text-align: center;
@@ -626,6 +669,7 @@ body.no-tab main { padding-bottom: calc(40px + var(--safe-bot)); }
   background: #fff;
   border-radius: 24px 24px 0 0;
   box-shadow: 0 -12px 40px rgba(25, 31, 40, 0.18);
+  transition: transform var(--ui-dur) var(--ui-ease), opacity var(--ui-dur) var(--ui-ease);
   padding: 10px 20px calc(20px + var(--safe-bot));
   transform: translateY(110%);
   transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.2, 1);
@@ -1192,6 +1236,7 @@ body.qr-open main {
 @media (prefers-reduced-motion: reduce) {
   .door { transition: none; }
   .btn { transition: none; }
+  .ui-motion { transition: none !important; }
   .qr-scanline, .qr-stage.ready .qr-corner, .qr-toast.shake,
   .qr-success.is-on .qr-success-badge, .code-field input.shake {
     animation: none !important;
