@@ -506,11 +506,33 @@ main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger {
 /* 앞쪽은 촘촘, 박스(이용방법/지도/대여)는 간격 넓게 */
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 50ms; }
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 120ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 190ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 260ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 360ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 520ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 680ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 280ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 440ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 600ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 760ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 920ms; }
+
+/* 박스 안 텍스트만 추가 시차 (이름 → 학번) */
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger-text,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] .vt-stagger-text {
+  opacity: 0;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] .vt-stagger-text {
+  animation: vtStaggerTextIn var(--nav-stagger-dur) var(--nav-ease-stagger) both;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagger-text {
+  animation: vtStaggerTextIn var(--nav-stagger-dur) var(--nav-ease-stagger) both;
+}
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="0"] {
+  animation-delay: 180ms;
+}
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="1"] {
+  animation-delay: 280ms;
+}
+@keyframes vtStaggerTextIn {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
 @keyframes vtStaggerRight {
   from { opacity: 0; transform: translate3d(20px, 0, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
@@ -1868,11 +1890,12 @@ body.map-open main {
   justify-content: space-between;
   align-items: center;
   padding: calc(14px * var(--ui-scale)) calc(14px * var(--ui-scale));
-  border-bottom: 0;
+  border-bottom: 1px solid var(--line);
   font-size: var(--fs-body);
   color: var(--muted);
   font-weight: 600;
 }
+.settings-card .settings-row:last-child { border-bottom: 0; }
 .settings-row strong { color: var(--ink); font-weight: 800; }
 .settings-action {
   display: flex;

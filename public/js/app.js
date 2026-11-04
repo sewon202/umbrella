@@ -252,9 +252,9 @@ function inferNavDir(fromId, toId) {
 }
 
 const NAV_KEYS = {
-  /* 마지막 stagger(680ms)+dur(460ms) ≈ 1140 — 끊기면 뒤 요소가 뭉쳐서 튀어나옴 */
-  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 1200 },
-  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 1200 },
+  /* 마지막 stagger(920ms)+dur(460ms) ≈ 1380 */
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 1450 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 1450 },
   push: { enter: "enter-push", leave: "leave-push", ms: 400 },
   pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
   fade: { enter: "enter-fade", leave: "leave-fade", ms: 340 },
