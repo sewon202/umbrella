@@ -257,7 +257,7 @@ const NAV_KEYS = {
   push: { enter: "enter-push", leave: "leave-push", ms: 400 },
   pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
   fade: { enter: "enter-fade", leave: "leave-fade", ms: 340 },
-  rise: { enter: "enter-rise", leave: "leave-rise", ms: 620 },
+  rise: { enter: "enter-rise", leave: "leave-rise", ms: 900 },
   sink: { enter: "enter-sink", leave: "leave-sink", ms: 420 },
 };
 
@@ -283,12 +283,23 @@ function forceNavCleanup() {
   navBusy = false;
 }
 
-function applyShowChrome(id, { tab } = {}) {
+function applyShowChrome(id, { tab, immersiveMode } = {}) {
   const shell = id === "v-home" || id === "v-settings";
   const authLogin = id === "v-login";
   const authSignup = id === "v-signup";
-  document.body.classList.toggle("qr-open", id === "v-qr");
-  document.body.classList.toggle("map-open", id === "v-map");
+  // immersiveMode: "defer" = 전환 중 홈 레이아웃 유지 / "qr"|"map" = 닫힘 애니 동안 유지
+  if (immersiveMode === "defer") {
+    /* qr-open/map-open 아직 적용하지 않음 — main 폭·배경 흔들림 방지 */
+  } else if (immersiveMode === "qr") {
+    document.body.classList.add("qr-open");
+    document.body.classList.remove("map-open");
+  } else if (immersiveMode === "map") {
+    document.body.classList.add("map-open");
+    document.body.classList.remove("qr-open");
+  } else {
+    document.body.classList.toggle("qr-open", id === "v-qr");
+    document.body.classList.toggle("map-open", id === "v-map");
+  }
   document.body.classList.toggle("auth-login", authLogin);
   document.body.classList.toggle("auth-signup", authSignup);
   setTabbar(shell);
@@ -319,9 +330,9 @@ function show(id, { tab, dir, instant } = {}) {
   if (navBusy) forceNavCleanup();
 
   const from = document.querySelector(".view.on");
-  applyShowChrome(id, { tab });
 
   if (from && from.id === id) {
+    applyShowChrome(id, { tab });
     finishShow(id);
     return Promise.resolve();
   }
@@ -330,9 +341,14 @@ function show(id, { tab, dir, instant } = {}) {
   const navDir = motionOff ? "none" : (dir || inferNavDir(from && from.id, id));
   const keys = NAV_KEYS[navDir];
 
+  // rise/sink 동안 qr-open·map-open 미적용 — main 폭이 바뀌며 홈이 왼쪽으로 밀리는 현상 방지
+  const immersiveMode = (navDir === "rise" || navDir === "sink") ? "defer" : undefined;
+  applyShowChrome(id, { tab, immersiveMode });
+
   if (!from || navDir === "none" || !keys) {
     document.querySelectorAll(".view.on").forEach((v) => v.classList.remove("on"));
     to.classList.add("on");
+    applyShowChrome(id, { tab });
     finishShow(id);
     return Promise.resolve();
   }
@@ -368,6 +384,8 @@ function show(id, { tab, dir, instant } = {}) {
         if (main) main.classList.remove("vt-busy");
         document.documentElement.removeAttribute("data-nav-dir");
         navBusy = false;
+        // 전환 끝난 뒤에야 qr-open/map-open 확정 — 배경 레이아웃 흔들림 방지
+        applyShowChrome(id, { tab });
         finishShow(id);
         resolve();
       };

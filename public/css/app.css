@@ -259,26 +259,25 @@ body.auth-login.no-tab main.vt-busy > .view.vt-from,
 body.auth-login.no-tab main.vt-busy > .view.vt-to {
   padding-bottom: calc(24px + var(--safe-bot));
 }
-main.vt-busy > .view.view-immersive.vt-from,
-main.vt-busy > .view.view-immersive.vt-to,
-body.qr-open main.vt-busy > .view.vt-from,
-body.qr-open main.vt-busy > .view.vt-to,
-body.map-open main.vt-busy > .view.vt-from,
-body.map-open main.vt-busy > .view.vt-to {
-  position: fixed;
-  inset: 0;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
+/*
+ * 전환 중 immersive는 main 안에서 absolute 유지 (fixed 금지).
+ * fixed + qr-open(max-width:none)이 홈을 왼쪽으로 밀어버리던 원인.
+ */
+main.vt-busy > #v-qr.vt-to,
+main.vt-busy > #v-qr.vt-from,
+main.vt-busy > #v-map.vt-to,
+main.vt-busy > #v-map.vt-from,
+main.vt-busy > #v-code.vt-to,
+main.vt-busy > #v-code.vt-from {
   padding: 0;
   z-index: 50;
+}
+main.vt-busy > #v-qr.vt-to,
+main.vt-busy > #v-qr.vt-from {
   background: #05070c;
 }
-body.map-open main.vt-busy > .view.vt-from,
-body.map-open main.vt-busy > .view.vt-to,
-main.vt-busy > #v-map.vt-from,
-main.vt-busy > #v-map.vt-to {
+main.vt-busy > #v-map.vt-to,
+main.vt-busy > #v-map.vt-from {
   background: #e8eef2;
 }
 
@@ -423,17 +422,15 @@ main.vt-busy > .view.vt-from[data-vt="leave-fade"][data-vt-run="1"] {
 
 /*
  * Rise / Sink (지도·QR): 아래에서 위로 덮기 / 아래로 내려 닫기
- * + .vt-stagger 요소가 위에서 아래로 시차 두고 같이 올라옴
+ * 뒤 화면(홈)은 不动 — transform/fixed/검정 배경 금지
  */
 main.vt-busy > .view.vt-to[data-vt="enter-rise"] {
   z-index: 4;
   transform: translate3d(0, 100%, 0);
-  background: var(--app-bg);
-  background-attachment: fixed;
-  box-shadow: 0 -12px 40px rgba(25, 31, 40, 0.12);
+  box-shadow: 0 -10px 32px rgba(25, 31, 40, 0.14);
 }
 main.vt-busy > #v-qr.vt-to[data-vt="enter-rise"],
-main.vt-busy > .view.view-immersive.vt-to[data-vt="enter-rise"]:not(#v-map) {
+main.vt-busy > #v-code.vt-to[data-vt="enter-rise"] {
   background: #05070c;
 }
 main.vt-busy > #v-map.vt-to[data-vt="enter-rise"] {
@@ -442,40 +439,37 @@ main.vt-busy > #v-map.vt-to[data-vt="enter-rise"] {
 main.vt-busy > .view.vt-from[data-vt="leave-rise"] {
   z-index: 2;
   pointer-events: none;
+  /* 홈은 그대로 두고 올라오는 화면만 움직임 */
+  transform: none !important;
+  opacity: 1 !important;
+  animation: none !important;
+  background: transparent;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] {
   animation: navRiseIn var(--nav-rise-dur) var(--nav-ease-ios) both;
-}
-main.vt-busy > .view.vt-from[data-vt="leave-rise"][data-vt-run="1"] {
-  animation: navRiseUnder var(--nav-rise-dur) var(--nav-ease-ios) both;
 }
 @keyframes navRiseIn {
   from { transform: translate3d(0, 100%, 0); }
   to { transform: translate3d(0, 0, 0); box-shadow: 0 0 0 transparent; }
 }
-@keyframes navRiseUnder {
-  from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
-  to { transform: translate3d(0, 0, 0) scale(0.97); opacity: 0.88; }
-}
 
 main.vt-busy > .view.vt-to[data-vt="enter-sink"] {
   z-index: 2;
-  opacity: 1;
-  background: var(--app-bg);
-  background-attachment: fixed;
+  /* 홈 복귀: 레이아웃 유지, 스케일/페이드로 밀지 않음 */
+  transform: none !important;
+  opacity: 1 !important;
+  animation: none !important;
+  background: transparent;
 }
 main.vt-busy > .view.vt-from[data-vt="leave-sink"] {
   z-index: 4;
-  box-shadow: 0 -12px 40px rgba(25, 31, 40, 0.12);
+  box-shadow: 0 -10px 32px rgba(25, 31, 40, 0.14);
 }
 main.vt-busy > #v-qr.vt-from[data-vt="leave-sink"] {
   background: #05070c;
 }
 main.vt-busy > #v-map.vt-from[data-vt="leave-sink"] {
   background: #e8eef2;
-}
-main.vt-busy > .view.vt-to[data-vt="enter-sink"][data-vt-run="1"] {
-  animation: navSinkUnder var(--nav-sink-dur) var(--nav-ease-ios) both;
 }
 main.vt-busy > .view.vt-from[data-vt="leave-sink"][data-vt-run="1"] {
   animation: navSinkOut var(--nav-sink-dur) var(--nav-ease-ios) both;
@@ -484,26 +478,38 @@ main.vt-busy > .view.vt-from[data-vt="leave-sink"][data-vt-run="1"] {
   from { transform: translate3d(0, 0, 0); }
   to { transform: translate3d(0, 100%, 0); }
 }
-@keyframes navSinkUnder {
-  from { transform: translate3d(0, 0, 0) scale(0.97); opacity: 0.88; }
-  to { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
-}
 
-/* 토스식 stagger: 화면과 같은 방향(아래→위)으로 상단부터 순차 등장 */
+/*
+ * 토스식 stagger — data-stagger로 명시적 delay (CSS var 곱셈 미지원 환경 대비)
+ * 화면 rise와 별개로 요소가 아래에서 위로 순차 등장
+ */
 .vt-stagger {
-  --stagger: 0;
+  will-change: transform, opacity;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-rise"] .vt-stagger {
   opacity: 0;
-  transform: translate3d(0, 22px, 0);
-  will-change: transform, opacity;
+  transform: translate3d(0, 36px, 0);
 }
 main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger {
   animation: vtStaggerUp var(--nav-stagger-dur) var(--nav-ease-ios) both;
-  animation-delay: calc(70ms + (var(--stagger) * 58ms));
+}
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="0"] {
+  animation-delay: 90ms;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="1"] {
+  animation-delay: 170ms;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="2"] {
+  animation-delay: 250ms;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="3"] {
+  animation-delay: 330ms;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="4"] {
+  animation-delay: 410ms;
 }
 @keyframes vtStaggerUp {
-  from { opacity: 0; transform: translate3d(0, 22px, 0); }
+  from { opacity: 0; transform: translate3d(0, 36px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
