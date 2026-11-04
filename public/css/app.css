@@ -1749,6 +1749,58 @@ body.qr-open main {
 }
 .settings-row:last-child { border-bottom: 0; }
 .settings-row strong { color: var(--ink); font-weight: 800; }
+.settings-actions {
+  margin-top: var(--gap-md);
+}
+.settings-action {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  padding: calc(15px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.settings-action:last-child { border-bottom: 0; }
+.settings-action:active { background: rgba(25, 31, 40, 0.04); }
+.settings-chevron {
+  color: var(--muted);
+  font-size: calc(22px * var(--ui-scale));
+  font-weight: 400;
+  line-height: 1;
+}
+.settings-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-h) + 18px + var(--safe-bot));
+  transform: translateX(-50%) translateY(8px);
+  z-index: 60;
+  max-width: min(320px, calc(100% - 40px));
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(25, 31, 40, 0.92);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.settings-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.settings-toast[hidden] { display: none !important; }
 /* 로그아웃을 탭바/QR에 더 가깝게 (살짝만 여유) */
 #v-settings .stack-gap {
   padding-bottom: 0;

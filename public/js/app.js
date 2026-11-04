@@ -1219,6 +1219,22 @@ $("pw").onkeydown = $("sid").onkeydown = (e) => { if (e.key === "Enter") login()
 $("joinBtn").onclick = signupSubmit;
 $("goSignup").onclick = (e) => { e.preventDefault(); showAuth("signup"); };
 $("goLogin").onclick = (e) => { e.preventDefault(); showAuth("login"); };
+let settingsToastTimer = 0;
+function showSettingsSoon() {
+  const t = $("settingsToast");
+  if (!t) return;
+  t.hidden = false;
+  t.textContent = "추후 개발 예정이에요.";
+  requestAnimationFrame(() => t.classList.add("show"));
+  if (settingsToastTimer) clearTimeout(settingsToastTimer);
+  settingsToastTimer = setTimeout(() => {
+    t.classList.remove("show");
+    setTimeout(() => { t.hidden = true; }, 220);
+    settingsToastTimer = 0;
+  }, 1800);
+}
+$("settingsPayment").onclick = showSettingsSoon;
+$("settingsVerify").onclick = showSettingsSoon;
 $("settingsLogout").onclick = logout;
 
 $("tabHome").onclick = () => goTab("home");
