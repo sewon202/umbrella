@@ -284,29 +284,28 @@ main.vt-busy > #v-map.vt-from {
 
 /*
  * 탭 (토스):
- * - enter: 불투명 패널이 10%만 슬라이드 (이전 UI가 비치지 않음)
- * - leave: 제자리 fade-out만 (같이 밀리지 않음)
- * - background-attachment:fixed → 그라데이션이 슬라이드에 안 잘림
- * - 선택자는 main.vt-busy > .view 투명 배경보다 높게
+ * - enter: 불투명 패널만 슬라이드
+ * - leave: 즉시 숨김 — 홈→설정 때 이전 화면이 옆에서 겹쳐 보이던 문제 방지
+ *   (빈 자리는 main.vt-busy 의 --app-bg 가 받침)
  */
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"],
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] {
   z-index: 3;
   opacity: 1;
   background: var(--app-bg);
-  background-attachment: fixed;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] {
-  transform: translate3d(8%, 0, 0);
+  transform: translate3d(6%, 0, 0);
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] {
-  transform: translate3d(-8%, 0, 0);
+  transform: translate3d(-6%, 0, 0);
 }
 main.vt-busy > .view.vt-from[data-vt="leave-tab-right"],
 main.vt-busy > .view.vt-from[data-vt="leave-tab-left"] {
-  z-index: 2;
-  opacity: 1;
+  z-index: 1;
+  opacity: 0;
   pointer-events: none;
+  visibility: hidden;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] {
   animation: navTabInRight var(--nav-tab-dur) var(--nav-ease-slide) both;
@@ -314,21 +313,13 @@ main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] {
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] {
   animation: navTabInLeft var(--nav-tab-dur) var(--nav-ease-slide) both;
 }
-main.vt-busy > .view.vt-from[data-vt="leave-tab-right"][data-vt-run="1"],
-main.vt-busy > .view.vt-from[data-vt="leave-tab-left"][data-vt-run="1"] {
-  animation: navTabFadeOut var(--nav-tab-dur) var(--nav-ease-fade) both;
-}
 @keyframes navTabInRight {
-  from { transform: translate3d(8%, 0, 0); }
+  from { transform: translate3d(6%, 0, 0); }
   to { transform: translate3d(0, 0, 0); }
 }
 @keyframes navTabInLeft {
-  from { transform: translate3d(-8%, 0, 0); }
+  from { transform: translate3d(-6%, 0, 0); }
   to { transform: translate3d(0, 0, 0); }
-}
-@keyframes navTabFadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
 }
 
 /* —— 스택 push/pop: 불투명 덮개로 이전 화면 가림 —— */
