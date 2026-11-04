@@ -12,7 +12,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=80">
+<link rel="stylesheet" href="/css/app.css?v=81">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -100,8 +100,8 @@
     </ol>
     <p class="home-steps-note">48시간 안에 반납하면 추가요금이 없어요.</p>
   </div>
-  <div class="home-cta-wrap vt-stagger" data-stagger="5">
-    <button type="button" class="home-map-btn" id="homeMapBtn" aria-label="지도에서 찾기">
+  <div class="home-cta-wrap">
+    <button type="button" class="home-map-btn vt-stagger" data-stagger="5" id="homeMapBtn" aria-label="지도에서 찾기">
       <span class="home-map-ico" aria-hidden="true">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
           <path d="M9 4.2 3.5 6.2v13.1L9 17.3l6 2.5 5.5-2V4.7L15 6.7 9 4.2z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
@@ -112,7 +112,7 @@
       <span class="home-rent-label">지도</span>
       <span class="home-rent-sub">보관함 위치</span>
     </button>
-    <button type="button" class="home-rent-btn" id="homeRentBtn" aria-label="우산 대여하기">
+    <button type="button" class="home-rent-btn vt-stagger" data-stagger="6" id="homeRentBtn" aria-label="우산 대여하기">
       <span class="home-rent-ico" aria-hidden="true">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
           <path d="M12 3c-3.2 0-5.8 2.2-6.6 5.1C3.7 8.4 2.5 9.9 2.5 11.7c0 .4.3.8.8.8h17.4c.4 0 .8-.4.8-.8 0-1.8-1.2-3.3-2.9-3.6C17.8 5.2 15.2 3 12 3z" fill="currentColor"/>
@@ -254,27 +254,27 @@
     <img class="brand-logo" src="/img/ssu-mark.png?v=41" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
-  <div class="sheet settings-list vt-stagger" data-stagger="1">
-    <div class="settings-row">
+  <div class="sheet settings-list">
+    <div class="settings-row vt-stagger" data-stagger="1">
       <span>이름</span>
       <strong id="setName">-</strong>
     </div>
-    <div class="settings-row">
+    <div class="settings-row vt-stagger" data-stagger="2">
       <span>학번</span>
       <strong id="setSid">-</strong>
     </div>
   </div>
-  <div class="sheet settings-list settings-actions vt-stagger" data-stagger="2">
-    <button type="button" class="settings-action" id="settingsPayment">
+  <div class="sheet settings-list settings-actions">
+    <button type="button" class="settings-action vt-stagger" data-stagger="3" id="settingsPayment">
       <span>결제수단 등록</span>
       <span class="settings-chevron" aria-hidden="true">›</span>
     </button>
-    <button type="button" class="settings-action" id="settingsVerify">
+    <button type="button" class="settings-action vt-stagger" data-stagger="4" id="settingsVerify">
       <span>재학생 인증</span>
       <span class="settings-chevron" aria-hidden="true">›</span>
     </button>
   </div>
-  <div class="stack-gap vt-stagger" data-stagger="3">
+  <div class="stack-gap vt-stagger" data-stagger="5">
     <button class="btn ghost" id="settingsLogout" type="button">로그아웃</button>
   </div>
   <div class="settings-toast" id="settingsToast" hidden role="status" aria-live="polite">추후 개발 예정이에요.</div>
@@ -413,6 +413,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=80"></script>
+<script type="module" src="/js/app.js?v=81"></script>
 </body>
 </html>

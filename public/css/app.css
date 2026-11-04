@@ -480,40 +480,48 @@ main.vt-busy > .view.vt-from[data-vt="leave-sink"][data-vt-run="1"] {
 }
 
 /*
- * 토스식 stagger — rise(지도/QR) + tab(설정 등) 진입 시
- * 상단→하단 시차로 아래에서 위로 순차 등장
+ * 토스식 stagger
+ * - tab: 화면 슬라이드와 같은 가로 방향 + 상단→하단 시차
+ * - rise: 아래에서 위로 (화면 rise와 동일)
  */
 .vt-stagger {
   will-change: transform, opacity;
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"] .vt-stagger,
-main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger {
+  opacity: 0;
+  transform: translate3d(32px, 0, 0);
+}
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] .vt-stagger {
+  opacity: 0;
+  transform: translate3d(-32px, 0, 0);
+}
+main.vt-busy > .view.vt-to[data-vt="enter-rise"] .vt-stagger {
   opacity: 0;
   transform: translate3d(0, 28px, 0);
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger,
-main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] .vt-stagger {
+  animation: vtStaggerRight var(--nav-stagger-dur) var(--nav-ease-ios) both;
+}
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagger {
+  animation: vtStaggerLeft var(--nav-stagger-dur) var(--nav-ease-ios) both;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger {
   animation: vtStaggerUp var(--nav-stagger-dur) var(--nav-ease-ios) both;
 }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] {
-  animation-delay: 60ms;
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 40ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 110ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 180ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 250ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 320ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 390ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 460ms; }
+@keyframes vtStaggerRight {
+  from { opacity: 0; transform: translate3d(32px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] {
-  animation-delay: 130ms;
-}
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] {
-  animation-delay: 200ms;
-}
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] {
-  animation-delay: 270ms;
-}
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] {
-  animation-delay: 340ms;
-}
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] {
-  animation-delay: 410ms;
+@keyframes vtStaggerLeft {
+  from { opacity: 0; transform: translate3d(-32px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes vtStaggerUp {
   from { opacity: 0; transform: translate3d(0, 28px, 0); }
