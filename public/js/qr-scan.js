@@ -179,7 +179,10 @@ async function lockCameraZoom(stream) {
   }
 }
 
-function cropCenter(ctx, w, h, ratio = 0.55) {
+/** 뷰파인더(~52vw)에 맞춘 중앙 크롭 비율 */
+const SCAN_CROP_RATIO = 0.42;
+
+function cropCenter(ctx, w, h, ratio = SCAN_CROP_RATIO) {
   const side = Math.floor(Math.min(w, h) * ratio);
   const sx = Math.floor((w - side) / 2);
   const sy = Math.floor((h - side) / 2);
@@ -201,7 +204,7 @@ async function detectOnce() {
   const det = await ensureDetector();
   if (det) {
     try {
-      const side = Math.floor(Math.min(w, h) * 0.55);
+      const side = Math.floor(Math.min(w, h) * SCAN_CROP_RATIO);
       const sx = Math.floor((w - side) / 2);
       const sy = Math.floor((h - side) / 2);
       const crop = document.createElement("canvas");
@@ -220,7 +223,7 @@ async function detectOnce() {
   }
 
   const decode = await loadJsQR();
-  const imageData = cropCenter(ctx, w, h, 0.55);
+  const imageData = cropCenter(ctx, w, h);
   const result = decode(imageData.data, imageData.width, imageData.height, {
     inversionAttempts: "dontInvert",
   });

@@ -16,7 +16,7 @@ import {
   RENT_LIMIT_MS,
   STATIONS,
 } from "/js/backend.js";
-import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=48";
+import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=49";
 import {
   initCampusMap,
   selectStation,

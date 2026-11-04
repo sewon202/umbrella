@@ -1462,74 +1462,36 @@ body.qr-open main {
 
 .qr-viewfinder {
   position: relative;
-  width: min(72vw, 292px);
+  width: min(52vw, 210px);
   aspect-ratio: 1;
   margin: auto;
-  border-radius: 24px;
+  border-radius: 18px;
   pointer-events: none;
-  /* 인식창 밖 전체를 어둡게 — GCOO/SWING 컷아웃 */
-  box-shadow: 0 0 0 999vmax rgba(0, 0, 0, 0.62);
+  /* 인식창 밖 전체를 어둡게 — 컷아웃 */
+  box-shadow: 0 0 0 999vmax rgba(0, 0, 0, 0.68);
   background: transparent;
   z-index: 1;
 }
 .qr-corner {
   position: absolute;
-  width: 32px;
-  height: 32px;
-  border: 3.5px solid #fff;
+  width: 26px;
+  height: 26px;
+  border: 3px solid #fff;
   z-index: 2;
   filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.35));
 }
 .qr-stage.ready .qr-corner { animation: qrCornerPulse 1.8s ease-in-out infinite; }
-.qr-corner.tl { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-radius: 14px 0 0 0; }
-.qr-corner.tr { top: -1px; right: -1px; border-left: 0; border-bottom: 0; border-radius: 0 14px 0 0; }
-.qr-corner.bl { bottom: -1px; left: -1px; border-right: 0; border-top: 0; border-radius: 0 0 0 14px; }
-.qr-corner.br { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-radius: 0 0 14px 0; }
-.qr-cross {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 14px;
-  height: 14px;
-  transform: translate(-50%, -50%);
-  opacity: 0.9;
-  z-index: 2;
-}
-.qr-cross::before,
-.qr-cross::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  background: #5FD0F0;
-  border-radius: 2px;
-  transform: translate(-50%, -50%);
-}
-.qr-cross::before { width: 14px; height: 2px; }
-.qr-cross::after { width: 2px; height: 14px; }
-.qr-scanline {
-  position: absolute;
-  left: 10%;
-  right: 10%;
-  height: 2px;
-  top: 12%;
-  border-radius: 2px;
-  background: linear-gradient(90deg, transparent, #7AD7F0, #fff, #7AD7F0, transparent);
-  box-shadow: 0 0 14px rgba(0, 155, 203, 0.75);
-  opacity: 0;
-  z-index: 2;
-}
-.qr-stage.ready .qr-scanline {
-  opacity: 1;
-  animation: qrScanSweep 2.2s ease-in-out infinite;
-}
+.qr-corner.tl { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-radius: 12px 0 0 0; }
+.qr-corner.tr { top: -1px; right: -1px; border-left: 0; border-bottom: 0; border-radius: 0 12px 0 0; }
+.qr-corner.bl { bottom: -1px; left: -1px; border-right: 0; border-top: 0; border-radius: 0 0 0 12px; }
+.qr-corner.br { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-radius: 0 0 12px 0; }
 .qr-finder-loading {
   position: absolute;
-  inset: 18%;
+  inset: 22%;
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.18);
-  border-top-color: rgba(122, 215, 240, 0.95);
-  opacity: 0.9;
+  border-top-color: rgba(255,255,255,0.85);
+  opacity: 0.85;
   animation: qrFinderSpin 0.85s linear infinite;
   z-index: 2;
 }
@@ -1710,15 +1672,9 @@ body.qr-open main {
   opacity: 0.7;
 }
 
-@keyframes qrScanSweep {
-  0% { top: 10%; opacity: 0; }
-  12% { opacity: 1; }
-  88% { opacity: 1; }
-  100% { top: 88%; opacity: 0; }
-}
 @keyframes qrCornerPulse {
-  0%, 100% { border-color: #fff; }
-  50% { border-color: #7AD7F0; }
+  0%, 100% { border-color: rgba(255, 255, 255, 1); }
+  50% { border-color: rgba(255, 255, 255, 0.55); }
 }
 @keyframes qrToastShake {
   0%, 100% { transform: translateX(0); }
