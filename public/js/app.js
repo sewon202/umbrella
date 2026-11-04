@@ -25,7 +25,7 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=48";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=49";
 
 initUiScale();
 
@@ -199,8 +199,12 @@ function show(id, { tab } = {}) {
   $(id).classList.add("on");
   const shell = id === "v-home" || id === "v-settings";
   const immersive = id === "v-qr" || id === "v-code" || id === "v-map";
+  const authLogin = id === "v-login";
+  const authSignup = id === "v-signup";
   document.body.classList.toggle("qr-open", id === "v-qr");
   document.body.classList.toggle("map-open", id === "v-map");
+  document.body.classList.toggle("auth-login", authLogin);
+  document.body.classList.toggle("auth-signup", authSignup);
   setTabbar(shell);
   // iOS Safari: 홈/설정은 보이는 뷰포트에 고정 (주소창 때문에 생기던 페이지 스크롤 차단)
   setShellScrollLock(shell);
@@ -208,7 +212,7 @@ function show(id, { tab } = {}) {
   else if (id === "v-qr") setTabActive("qr");
   if (!immersive) window.scrollTo(0, 0);
   // 홈 CTA 실측 보정(다른 화면도 같은 --ui-scale 유지)
-  requestAnimationFrame(() => updateUiScale());
+  requestAnimationFrame(() => updateUiScale({ force: true }));
 }
 
 function setMsg(text) {

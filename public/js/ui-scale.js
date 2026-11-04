@@ -4,6 +4,9 @@
  *
  * iOS Safari: 100vh/dvh가 주소창을 접은 "큰 뷰포트"라 첫 화면보다 커서 스크롤이 생김.
  * → visualViewport / innerHeight로 --app-h 를 잡고 셸을 그 높이에 고정.
+ *
+ * 키보드: visualViewport가 줄어들며 레이아웃·배율이 뭉개지지 않도록
+ * 입력 포커스 중에는 --app-h / --ui-scale 갱신을 멈춘다.
  */
 /** 하단바 제외 영역 기준 — 2/3보다 약간 아래 */
 const TARGET_RATIO = 0.74;
@@ -12,24 +15,67 @@ const DESIGN_CTA_BOTTOM = 470;
 const MIN_SCALE = 0.55;
 const MAX_SCALE = 1;
 
+/** 키보드 없는 상태의 기준 높이 (키보드로 줄어든 값으로 덮어쓰지 않음) */
+let layoutBaselineH = 0;
+
 function clamp(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
 }
 
-function viewportHeight() {
-  // iOS: visualViewport가 주소창 펼침 상태를 더 잘 반영하는 경우가 많음
+function isTextInputFocused() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA") return true;
+  if (tag === "INPUT") {
+    const type = (el.getAttribute("type") || "text").toLowerCase();
+    return !["button", "submit", "reset", "checkbox", "radio", "file", "hidden", "range", "color"].includes(type);
+  }
+  return !!el.isContentEditable;
+}
+
+function rawViewportHeight() {
   const vv = window.visualViewport;
   const vvH = vv && vv.height ? Math.round(vv.height) : 0;
   const inner = Math.round(window.innerHeight || 0);
-  if (vvH > 0 && inner > 0) return Math.min(vvH, inner);
+  // 둘 중 큰 쪽 — 키보드는 visualViewport만 줄이는 경우가 많음
+  if (vvH > 0 && inner > 0) return Math.max(vvH, inner);
   return vvH || inner || 0;
 }
 
-function syncAppHeight() {
-  const h = viewportHeight();
-  if (!h) return 0;
-  document.documentElement.style.setProperty("--app-h", `${h}px`);
+function viewportHeight() {
+  const h = rawViewportHeight();
+  if (!h) return layoutBaselineH || 0;
+  // 입력 중 급감 = 키보드 → 기준 높이 유지 (화면 압축 방지)
+  if (isTextInputFocused() && layoutBaselineH && h < layoutBaselineH - 60) {
+    return layoutBaselineH;
+  }
   return h;
+}
+
+function syncAppHeight({ force = false } = {}) {
+  const measured = rawViewportHeight();
+  if (!measured && !layoutBaselineH) return 0;
+
+  if (isTextInputFocused() && layoutBaselineH && !force) {
+    // 키보드 열린 동안 --app-h 고정
+    document.documentElement.style.setProperty("--app-h", `${layoutBaselineH}px`);
+    return layoutBaselineH;
+  }
+
+  const h = measured || layoutBaselineH;
+  if (force || !layoutBaselineH || Math.abs(h - layoutBaselineH) > 40) {
+    // 회전 등으로 크게 바뀔 때만 기준 갱신. 키보드로 작아진 값은 무시.
+    if (!isTextInputFocused() || force) {
+      layoutBaselineH = h;
+    }
+  } else if (!isTextInputFocused()) {
+    layoutBaselineH = h;
+  }
+
+  const apply = layoutBaselineH || h;
+  document.documentElement.style.setProperty("--app-h", `${apply}px`);
+  return apply;
 }
 
 function tabbarHeight() {
@@ -40,7 +86,6 @@ function tabbarHeight() {
   }
   const cs = getComputedStyle(document.documentElement);
   const content = parseFloat(cs.getPropertyValue("--tabbar-content-h")) || 52;
-  // env(safe-area)는 숫자 파싱이 안 될 수 있어 home indicator 대략값
   return content + 34;
 }
 
@@ -56,8 +101,14 @@ function contentTargetY() {
   return (vh - tabbarHeight()) * TARGET_RATIO;
 }
 
-export function updateUiScale() {
-  syncAppHeight();
+export function updateUiScale({ force = false } = {}) {
+  // 키보드로 뷰포트만 줄어든 경우 배율·높이 재계산하지 않음
+  if (!force && isTextInputFocused()) {
+    syncAppHeight();
+    return;
+  }
+
+  syncAppHeight({ force });
   const target = contentTargetY();
   if (!target) return;
 
@@ -82,6 +133,7 @@ export function updateUiScale() {
 
   if (!onHome) return;
   requestAnimationFrame(() => {
+    if (isTextInputFocused()) return;
     const bottom2 = btn.getBoundingClientRect().bottom;
     if (!(bottom2 > 40)) return;
     const s2 = currentScale();
@@ -101,17 +153,35 @@ export function setShellScrollLock(locked) {
 let resizeTimer = 0;
 function onResize() {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(updateUiScale, 80);
+  resizeTimer = setTimeout(() => updateUiScale(), 80);
+}
+
+function onFocusIn(e) {
+  const t = e.target;
+  if (!t) return;
+  const tag = t.tagName;
+  if (tag !== "INPUT" && tag !== "TEXTAREA" && !t.isContentEditable) return;
+  // 포커스 직전 높이를 기준으로 고정
+  syncAppHeight();
+}
+
+function onFocusOut() {
+  // 키보드 닫힌 뒤 한 박자 뒤 기준 높이 재측정
+  setTimeout(() => updateUiScale({ force: true }), 120);
 }
 
 export function initUiScale() {
-  syncAppHeight();
-  updateUiScale();
+  syncAppHeight({ force: true });
+  updateUiScale({ force: true });
   window.addEventListener("resize", onResize, { passive: true });
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", onResize, { passive: true });
-    // 주소창 펼침/접힘 때 offset 변화
     window.visualViewport.addEventListener("scroll", onResize, { passive: true });
   }
-  window.addEventListener("orientationchange", () => setTimeout(updateUiScale, 120));
+  window.addEventListener("orientationchange", () => {
+    layoutBaselineH = 0;
+    setTimeout(() => updateUiScale({ force: true }), 160);
+  });
+  document.addEventListener("focusin", onFocusIn, true);
+  document.addEventListener("focusout", onFocusOut, true);
 }
