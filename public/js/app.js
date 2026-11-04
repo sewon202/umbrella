@@ -224,11 +224,15 @@ const FAST_NAV_ORDER = {
 
 function inferNavDir(fromId, toId) {
   if (!fromId || fromId === toId) return "none";
+  // QR 카메라(검정 배경): 슬라이드 대신 페이드인/아웃
+  if (fromId === "v-qr" || toId === "v-qr" || fromId === "v-code" || toId === "v-code") {
+    return "fade";
+  }
   const tabFrom = TAB_ORDER[fromId];
   const tabTo = TAB_ORDER[toId];
-  // 하단 탭: 토스식 짧은 슬라이드+페이드
+  // 하단 탭(홈↔설정): 토스식 짧은 슬라이드
   if (tabFrom != null && tabTo != null) return tabTo > tabFrom ? "tab-right" : "tab-left";
-  // 로그인↔홈, 홈↔지도 등도 설정/QR과 동일 속도
+  // 로그인↔홈, 홈↔지도 등
   if (fromId in FAST_NAV_ORDER && toId in FAST_NAV_ORDER) {
     const a = FAST_NAV_ORDER[fromId];
     const b = FAST_NAV_ORDER[toId];
@@ -242,11 +246,11 @@ function inferNavDir(fromId, toId) {
 }
 
 const NAV_KEYS = {
-  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 260 },
-  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 260 },
-  push: { enter: "enter-push", leave: "leave-push", ms: 360 },
-  pop: { enter: "enter-pop", leave: "leave-pop", ms: 360 },
-  fade: { enter: "enter-fade", leave: "leave-fade", ms: 240 },
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 380 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 380 },
+  push: { enter: "enter-push", leave: "leave-push", ms: 400 },
+  pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
+  fade: { enter: "enter-fade", leave: "leave-fade", ms: 340 },
 };
 
 function clearNavLayer(el) {

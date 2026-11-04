@@ -19,15 +19,17 @@
   --safe-bot: env(safe-area-inset-bottom, 0px);
   --ui-dur: 0.28s;
   --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* 토스식 탭 전환: ~220ms, 감속, 살짝만 슬라이드 */
-  --nav-tab-dur: 220ms;
-  --nav-push-dur: 320ms;
-  --nav-leave-dur: 200ms;
-  /* decelerate — 빠르게 출발 후 부드럽게 멈춤 (토스/Android decelerate) */
-  --nav-ease-slide: cubic-bezier(0, 0, 0.2, 1);
-  --nav-ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --nav-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* 탭 슬라이드: 조금 여유 있게 + 부드러운 감속 (휙 방지) */
+  --nav-tab-dur: 340ms;
+  --nav-push-dur: 360ms;
+  --nav-leave-dur: 280ms;
+  --nav-fade-dur: 300ms;
+  /* soft decelerate — 출발은 부드럽게, 끝에서 천천히 착지 */
+  --nav-ease-slide: cubic-bezier(0.33, 0.1, 0.25, 1);
+  --nav-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --nav-ease-in: cubic-bezier(0.4, 0, 0.68, 0.06);
   --nav-ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --nav-ease-fade: cubic-bezier(0.4, 0, 0.2, 1);
   --app-bg:
     radial-gradient(120% 80% at 50% -10%, rgba(0, 155, 203, 0.14), transparent 55%),
     var(--bg);
@@ -286,10 +288,10 @@ main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] {
   background-attachment: fixed;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] {
-  transform: translate3d(10%, 0, 0);
+  transform: translate3d(8%, 0, 0);
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] {
-  transform: translate3d(-10%, 0, 0);
+  transform: translate3d(-8%, 0, 0);
 }
 main.vt-busy > .view.vt-from[data-vt="leave-tab-right"],
 main.vt-busy > .view.vt-from[data-vt="leave-tab-left"] {
@@ -305,14 +307,14 @@ main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] {
 }
 main.vt-busy > .view.vt-from[data-vt="leave-tab-right"][data-vt-run="1"],
 main.vt-busy > .view.vt-from[data-vt="leave-tab-left"][data-vt-run="1"] {
-  animation: navTabFadeOut var(--nav-leave-dur) linear both;
+  animation: navTabFadeOut var(--nav-leave-dur) var(--nav-ease-fade) both;
 }
 @keyframes navTabInRight {
-  from { transform: translate3d(10%, 0, 0); }
+  from { transform: translate3d(8%, 0, 0); }
   to { transform: translate3d(0, 0, 0); }
 }
 @keyframes navTabInLeft {
-  from { transform: translate3d(-10%, 0, 0); }
+  from { transform: translate3d(-8%, 0, 0); }
   to { transform: translate3d(0, 0, 0); }
 }
 @keyframes navTabFadeOut {
@@ -374,14 +376,29 @@ main.vt-busy > .view.vt-from[data-vt="leave-pop"][data-vt-run="1"] {
   to { transform: translate3d(100%, 0, 0); }
 }
 
-/* —— 동일 depth fade —— */
-.view[data-vt="enter-fade"] { z-index: 3; opacity: 0; }
-.view[data-vt="leave-fade"] { z-index: 2; opacity: 1; pointer-events: none; }
-.view[data-vt="enter-fade"][data-vt-run="1"] {
-  animation: navFadeIn var(--nav-tab-dur) var(--nav-ease-slide) both;
+/*
+ * 페이드 (QR 카메라 등): 검정/불투명 레이어가 스르륵 덮임
+ * — 슬라이드 없이 crossfade, 토스 카메라 진입감
+ */
+main.vt-busy > .view.vt-to[data-vt="enter-fade"] {
+  z-index: 3;
+  opacity: 0;
+  background: var(--app-bg);
+  background-attachment: fixed;
 }
-.view[data-vt="leave-fade"][data-vt-run="1"] {
-  animation: navFadeOut var(--nav-leave-dur) linear both;
+main.vt-busy > .view.view-immersive.vt-to[data-vt="enter-fade"] {
+  background: #05070c;
+}
+main.vt-busy > .view.vt-from[data-vt="leave-fade"] {
+  z-index: 2;
+  opacity: 1;
+  pointer-events: none;
+}
+main.vt-busy > .view.vt-to[data-vt="enter-fade"][data-vt-run="1"] {
+  animation: navFadeIn var(--nav-fade-dur) var(--nav-ease-fade) both;
+}
+main.vt-busy > .view.vt-from[data-vt="leave-fade"][data-vt-run="1"] {
+  animation: navFadeOut var(--nav-fade-dur) var(--nav-ease-fade) both;
 }
 @keyframes navFadeIn {
   from { opacity: 0; }
