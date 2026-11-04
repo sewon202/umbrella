@@ -272,6 +272,12 @@ body.map-open main.vt-busy > .view.vt-to {
   z-index: 50;
   background: #05070c;
 }
+body.map-open main.vt-busy > .view.vt-from,
+body.map-open main.vt-busy > .view.vt-to,
+main.vt-busy > #v-map.vt-from,
+main.vt-busy > #v-map.vt-to {
+  background: #e8eef2;
+}
 
 /*
  * 탭 (토스):
@@ -388,6 +394,10 @@ main.vt-busy > .view.vt-to[data-vt="enter-fade"] {
 }
 main.vt-busy > .view.view-immersive.vt-to[data-vt="enter-fade"] {
   background: #05070c;
+}
+main.vt-busy > #v-map.vt-to[data-vt="enter-fade"],
+body.map-open main.vt-busy > #v-map.vt-to[data-vt="enter-fade"] {
+  background: #e8eef2;
 }
 main.vt-busy > .view.vt-from[data-vt="leave-fade"] {
   z-index: 2;

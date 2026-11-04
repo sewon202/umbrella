@@ -225,8 +225,12 @@ const FAST_NAV_ORDER = {
 
 function inferNavDir(fromId, toId) {
   if (!fromId || fromId === toId) return "none";
-  // QR 카메라(검정 배경): 슬라이드 대신 페이드인/아웃
-  if (fromId === "v-qr" || toId === "v-qr" || fromId === "v-code" || toId === "v-code") {
+  // QR·지도·코드입력: 슬라이드 대신 페이드 (로딩/카메라 화면이 슬라이드되면 어색함)
+  if (
+    fromId === "v-qr" || toId === "v-qr" ||
+    fromId === "v-code" || toId === "v-code" ||
+    fromId === "v-map" || toId === "v-map"
+  ) {
     return "fade";
   }
   const tabFrom = TAB_ORDER[fromId];
