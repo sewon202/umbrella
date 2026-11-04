@@ -38,6 +38,14 @@ const fb = cfg.firebase || {};
 export const MAX_HW_SLOT = (cfg.cost && cfg.cost.maxHwSlot) || 2;
 export const TOTAL_SLOTS = 6;
 export const RENT_LIMIT_MS = 48 * 3600 * 1000;
+/** 48시간 초과 후: 5분마다 1,000원 */
+export const OVERDUE_FEE_WON = 1000;
+export const OVERDUE_FEE_UNIT_MS = 5 * 60 * 1000;
+
+export function overdueFeeWon(overdueMs) {
+  if (!(overdueMs > 0)) return 0;
+  return Math.ceil(overdueMs / OVERDUE_FEE_UNIT_MS) * OVERDUE_FEE_WON;
+}
 /** 새로고침 후 로그인 유지 (약 20분) */
 export const SESSION_MS = 20 * 60 * 1000;
 const DEVICE_KEY = "umbrella-device";

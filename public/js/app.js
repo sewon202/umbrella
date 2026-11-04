@@ -14,6 +14,7 @@ import {
   MAX_HW_SLOT,
   TOTAL_SLOTS,
   RENT_LIMIT_MS,
+  overdueFeeWon,
   STATIONS,
 } from "/js/backend.js";
 import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=49";
@@ -844,17 +845,34 @@ function tick() {
     const due = r.due_at || r.rented_at + RENT_LIMIT_MS;
     const left = due - Date.now();
     const over = left < 0;
+    const overdueMs = over ? Math.abs(left) : 0;
+    const fee = overdueFeeWon(overdueMs);
     el.classList.toggle("over", over);
     el.querySelector(".tl").textContent = over ? "반납 기한이 지났어요" : "남은 대여시간";
     el.querySelector(".tv").textContent = (over ? "+" : "") + fmt(Math.abs(left));
+    const tf = el.querySelector(".tf");
+    if (tf) {
+      if (over && fee > 0) {
+        tf.hidden = false;
+        tf.textContent = `예상 추가요금 ${fee.toLocaleString("ko-KR")}원`;
+      } else {
+        tf.hidden = true;
+        tf.textContent = "";
+      }
+    }
     const bar = el.querySelector(".bar i");
     if (bar) bar.style.width = `${Math.max(0, Math.min(100, (left / RENT_LIMIT_MS) * 100))}%`;
     const stationLabel = STATION_NAMES[r.station] || STATION_QR[r.station] || r.station;
     const ts = el.querySelector(".ts");
     if (ts) {
-      ts.textContent =
-        `${stationLabel} ${r.slot}번 칸 · 반납 기한 ` +
-        new Date(due).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+      if (over) {
+        ts.textContent =
+          `${stationLabel} ${r.slot}번 칸 · 5분마다 1,000원`;
+      } else {
+        ts.textContent =
+          `${stationLabel} ${r.slot}번 칸 · 반납 기한 ` +
+          new Date(due).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+      }
     }
   });
   syncTimerSlot("pickTimerSlot", "pickTimer", !!(r && $("pickTimer") && !$("pickTimer").hidden));

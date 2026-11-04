@@ -769,6 +769,18 @@ main.vt-busy > .view.vt-from[data-vt="leave-fade"][data-vt-run="1"] {
   line-height: 1.15;
   margin-top: calc(2px * var(--ui-scale));
 }
+.tf {
+  margin-top: calc(6px * var(--ui-scale));
+  font-size: calc(15px * var(--ui-scale));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  opacity: 0.98;
+}
+.tf[hidden] { display: none !important; }
+.timer-compact .tf {
+  margin-top: calc(4px * var(--ui-scale));
+  font-size: calc(13px * var(--ui-scale));
+}
 .bar {
   height: calc(5px * var(--ui-scale));
   border-radius: 999px;
@@ -1002,6 +1014,17 @@ main.vt-busy > .view.vt-from[data-vt="leave-fade"][data-vt-run="1"] {
   font-size: calc(14px * var(--ui-scale));
   font-weight: 600;
   line-height: 1.65;
+}
+.home-steps-note {
+  margin: var(--gap-md) 0 0;
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-radius: calc(12px * var(--ui-scale));
+  background: var(--ssu-mist);
+  color: var(--ssu-deep);
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.02em;
 }
 .home-cta-wrap {
   display: grid;
