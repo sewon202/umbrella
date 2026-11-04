@@ -252,8 +252,9 @@ function inferNavDir(fromId, toId) {
 }
 
 const NAV_KEYS = {
-  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 580 },
-  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 580 },
+  /* 마지막 stagger(680ms)+dur(460ms) ≈ 1140 — 끊기면 뒤 요소가 뭉쳐서 튀어나옴 */
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 1200 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 1200 },
   push: { enter: "enter-push", leave: "leave-push", ms: 400 },
   pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
   fade: { enter: "enter-fade", leave: "leave-fade", ms: 340 },
@@ -367,39 +368,44 @@ function show(id, { tab, dir, instant } = {}) {
   from.setAttribute("data-vt", keys.leave);
   to.setAttribute("data-vt", keys.enter);
 
-  // 한 프레임에 시작 상태 고정 후 재생 — 레이아웃 thrash 감소
+  // 두 프레임 뒤 재생 — 스타일 확정 후 GPU 레이어 생성, 첫 프레임 드랍 완화
   return new Promise((resolve) => {
     requestAnimationFrame(() => {
-      from.setAttribute("data-vt-run", "1");
-      to.setAttribute("data-vt-run", "1");
+      requestAnimationFrame(() => {
+        from.setAttribute("data-vt-run", "1");
+        to.setAttribute("data-vt-run", "1");
 
-      let done = false;
-      const cleanup = () => {
-        if (done) return;
-        done = true;
-        if (navCleanupTimer) {
-          clearTimeout(navCleanupTimer);
-          navCleanupTimer = 0;
-        }
-        to.removeEventListener("animationend", onEnd);
-        from.classList.remove("on");
-        clearNavLayer(from);
-        clearNavLayer(to);
-        if (main) main.classList.remove("vt-busy");
-        document.documentElement.removeAttribute("data-nav-dir");
-        navBusy = false;
-        // 전환 끝난 뒤에야 qr-open/map-open 확정 — 배경 레이아웃 흔들림 방지
-        applyShowChrome(id, { tab });
-        finishShow(id);
-        resolve();
-      };
+        let done = false;
+        const cleanup = () => {
+          if (done) return;
+          done = true;
+          if (navCleanupTimer) {
+            clearTimeout(navCleanupTimer);
+            navCleanupTimer = 0;
+          }
+          to.removeEventListener("animationend", onEnd);
+          from.classList.remove("on");
+          clearNavLayer(from);
+          clearNavLayer(to);
+          if (main) main.classList.remove("vt-busy");
+          document.documentElement.removeAttribute("data-nav-dir");
+          navBusy = false;
+          // 전환 끝난 뒤에야 qr-open/map-open 확정 — 배경 레이아웃 흔들림 방지
+          applyShowChrome(id, { tab });
+          finishShow(id);
+          resolve();
+        };
 
-      const onEnd = (e) => {
-        if (e.target !== to) return;
-        cleanup();
-      };
-      to.addEventListener("animationend", onEnd);
-      navCleanupTimer = setTimeout(cleanup, keys.ms);
+        const onEnd = (e) => {
+          // 뷰 자체의 슬라이드 애니만 — 자식 stagger animationend 는 무시
+          if (e.target !== to) return;
+          // tab 은 stagger가 더 길므로 타임아웃으로만 정리 (조기 cleanup 방지)
+          if (navDir === "tab-right" || navDir === "tab-left") return;
+          cleanup();
+        };
+        to.addEventListener("animationend", onEnd);
+        navCleanupTimer = setTimeout(cleanup, keys.ms);
+      });
     });
   });
 }

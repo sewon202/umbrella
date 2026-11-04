@@ -19,20 +19,21 @@
   --safe-bot: env(safe-area-inset-bottom, 0px);
   --ui-dur: 0.28s;
   --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* 탭 슬라이드: 조금 여유 있게 + 부드러운 감속 (휙 방지) */
-  --nav-tab-dur: 340ms;
+  /* 탭: 슬라이드는 짧게, stagger는 여유 있게 (cleanup이 끊지 않게) */
+  --nav-tab-dur: 380ms;
   --nav-push-dur: 360ms;
-  --nav-leave-dur: 280ms;
+  --nav-leave-dur: 320ms;
   --nav-fade-dur: 300ms;
   --nav-rise-dur: 420ms;
   --nav-sink-dur: 380ms;
-  --nav-stagger-dur: 420ms;
+  --nav-stagger-dur: 460ms;
   /* soft decelerate — 출발은 부드럽게, 끝에서 천천히 착지 */
   --nav-ease-slide: cubic-bezier(0.33, 0.1, 0.25, 1);
   --nav-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
   --nav-ease-in: cubic-bezier(0.4, 0, 0.68, 0.06);
-  --nav-ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --nav-ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
   --nav-ease-fade: cubic-bezier(0.4, 0, 0.2, 1);
+  --nav-ease-stagger: cubic-bezier(0.22, 1, 0.36, 1);
   --app-bg:
     radial-gradient(120% 80% at 50% -10%, rgba(0, 155, 203, 0.14), transparent 55%),
     var(--bg);
@@ -246,10 +247,10 @@ main.vt-busy > .view.vt-to {
   overflow: hidden;
   box-sizing: border-box;
   background: transparent;
-  contain: layout;
-  will-change: transform, opacity;
+  /* contain:layout 은 자식 stagger/transform과 충돌·드랍을 유발해 제거 */
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
 }
 body.no-tab main.vt-busy > .view.vt-from,
 body.no-tab main.vt-busy > .view.vt-to {
@@ -315,7 +316,7 @@ main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] {
 }
 main.vt-busy > .view.vt-from[data-vt="leave-tab-right"][data-vt-run="1"],
 main.vt-busy > .view.vt-from[data-vt="leave-tab-left"][data-vt-run="1"] {
-  animation: navTabFadeOut var(--nav-leave-dur) var(--nav-ease-fade) both;
+  animation: navTabFadeOut var(--nav-tab-dur) var(--nav-ease-fade) both;
 }
 @keyframes navTabInRight {
   from { transform: translate3d(8%, 0, 0); }
@@ -481,50 +482,54 @@ main.vt-busy > .view.vt-from[data-vt="leave-sink"][data-vt-run="1"] {
 
 /*
  * 토스식 stagger
- * - tab: 화면 슬라이드와 같은 가로 방향 + 상단→하단 시차
- * - rise: 아래에서 위로 (화면 rise와 동일)
+ * - tab: 화면 슬라이드와 같은 가로 방향 + 상단→하단 시차 (간격 넓게)
+ * - rise: 아래에서 위로
+ * ※ cleanup ms 가 마지막 delay+dur 보다 길어야 “휙” 끊김이 없음
  */
-.vt-stagger {
-  will-change: transform, opacity;
-}
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger {
   opacity: 0;
-  transform: translate3d(32px, 0, 0);
+  transform: translate3d(20px, 0, 0);
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] .vt-stagger {
   opacity: 0;
-  transform: translate3d(-32px, 0, 0);
+  transform: translate3d(-20px, 0, 0);
 }
 main.vt-busy > .view.vt-to[data-vt="enter-rise"] .vt-stagger {
   opacity: 0;
-  transform: translate3d(0, 28px, 0);
+  transform: translate3d(0, 20px, 0);
+}
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger {
+  will-change: transform, opacity;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] .vt-stagger {
-  animation: vtStaggerRight var(--nav-stagger-dur) var(--nav-ease-ios) both;
+  animation: vtStaggerRight var(--nav-stagger-dur) var(--nav-ease-stagger) both;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagger {
-  animation: vtStaggerLeft var(--nav-stagger-dur) var(--nav-ease-ios) both;
+  animation: vtStaggerLeft var(--nav-stagger-dur) var(--nav-ease-stagger) both;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger {
-  animation: vtStaggerUp var(--nav-stagger-dur) var(--nav-ease-ios) both;
+  animation: vtStaggerUp var(--nav-stagger-dur) var(--nav-ease-stagger) both;
 }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 40ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 110ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 180ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 250ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 320ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 390ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 460ms; }
+/* 앞쪽은 촘촘, 박스(이용방법/지도/대여)는 간격 넓게 */
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 50ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 120ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 190ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 260ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 360ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 520ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 680ms; }
 @keyframes vtStaggerRight {
-  from { opacity: 0; transform: translate3d(32px, 0, 0); }
+  from { opacity: 0; transform: translate3d(20px, 0, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes vtStaggerLeft {
-  from { opacity: 0; transform: translate3d(-32px, 0, 0); }
+  from { opacity: 0; transform: translate3d(-20px, 0, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes vtStaggerUp {
-  from { opacity: 0; transform: translate3d(0, 28px, 0); }
+  from { opacity: 0; transform: translate3d(0, 20px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
