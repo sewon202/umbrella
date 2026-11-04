@@ -12,7 +12,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=79">
+<link rel="stylesheet" href="/css/app.css?v=80">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -74,13 +74,13 @@
 </section>
 
 <section class="view" id="v-home">
-  <div class="brand">
+  <div class="brand vt-stagger" data-stagger="0">
     <img class="brand-logo" src="/img/ssu-mark.png?v=41" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
-  <h1 class="hero-title"><span id="homeWho">안녕하세요</span></h1>
-  <p class="hero-sub">QR을 스캔하거나 아래 버튼으로 대여를 시작해요.</p>
-  <div class="home-timer-slot" id="homeTimerSlot">
+  <h1 class="hero-title vt-stagger" data-stagger="1"><span id="homeWho">안녕하세요</span></h1>
+  <p class="hero-sub vt-stagger" data-stagger="2">QR을 스캔하거나 아래 버튼으로 대여를 시작해요.</p>
+  <div class="home-timer-slot vt-stagger" data-stagger="3" id="homeTimerSlot">
     <div class="home-timer-inner">
       <div class="timer" id="homeTimer" hidden>
         <div class="tl"></div>
@@ -91,7 +91,7 @@
       </div>
     </div>
   </div>
-  <div class="sheet home-card" id="homeCard">
+  <div class="sheet home-card vt-stagger" data-stagger="4" id="homeCard">
     <p class="home-card-title">이용 방법</p>
     <ol class="home-steps">
       <li>대여소에 있는 QR을 스캔해요</li>
@@ -100,7 +100,7 @@
     </ol>
     <p class="home-steps-note">48시간 안에 반납하면 추가요금이 없어요.</p>
   </div>
-  <div class="home-cta-wrap">
+  <div class="home-cta-wrap vt-stagger" data-stagger="5">
     <button type="button" class="home-map-btn" id="homeMapBtn" aria-label="지도에서 찾기">
       <span class="home-map-ico" aria-hidden="true">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
@@ -413,6 +413,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=79"></script>
+<script type="module" src="/js/app.js?v=80"></script>
 </body>
 </html>
