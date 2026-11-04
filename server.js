@@ -145,6 +145,11 @@ const q = {
   ),
   recentCommands: db.prepare("SELECT * FROM commands ORDER BY id DESC LIMIT 20"),
   recentEvents: db.prepare("SELECT * FROM device_events ORDER BY id DESC LIMIT 20"),
+  recentEventsAt: db.prepare(
+    `SELECT * FROM device_events
+     WHERE station = ? AND slot = ? AND created_at >= ?
+     ORDER BY id DESC LIMIT 40`
+  ),
 };
 
 for (const [code, name] of STATIONS) {
@@ -282,7 +287,7 @@ app.post("/api/return", (req, res) => {
   try {
     q.setUmbrella.run("in", null, null, station, slot);
     q.closeRental.run(now, active.id);
-    const c = q.insertCommand.run(station, slot, "open", studentId, now);
+    const c = q.insertCommand.run(station, slot, "open_return", studentId, now);
     db.exec("COMMIT");
     res.json({ ok: true, id: Number(c.lastInsertRowid), station, slot });
   } catch (e) {
@@ -347,7 +352,9 @@ app.post("/api/device/event", requireDeviceKey, (req, res) => {
   const slot = toSlot(req.body && req.body.slot);
   const kind = String((req.body && req.body.kind) || "");
   const payload = (req.body && req.body.payload) || {};
-  if (!["rfid", "ir", "servo"].includes(kind)) return bad(res, "kind는 rfid/ir/servo 중 하나여야 해요.");
+  if (!["rfid", "ir", "servo", "return_ok"].includes(kind)) {
+    return bad(res, "kind는 rfid/ir/servo/return_ok 중 하나여야 해요.");
+  }
   if (!assertSlot(res, slot)) return;
   const info = q.insertEvent.run(station, slot, kind, JSON.stringify(payload), Date.now());
   if (kind === "rfid" && payload.uid) {
@@ -388,6 +395,21 @@ app.get("/api/device/presence", (req, res) => {
 function nowFresh(ts, ms) {
   return Date.now() - Number(ts) <= ms;
 }
+
+/** 웹앱이 문 닫힘(auto_close / return_ok)을 기다리며 폴링 */
+app.get("/api/device/events", (req, res) => {
+  const station = toStation(req.query.station);
+  const slot = toSlot(req.query.slot);
+  if (!station || !assertSlot(res, slot)) return;
+  const rows = q.recentEventsAt.all(station, slot, 0);
+  res.json({
+    events: rows.map((e) => {
+      let payload = {};
+      try { payload = JSON.parse(e.payload || "{}"); } catch (_) {}
+      return { id: e.id, station: e.station, slot: e.slot, kind: e.kind, payload, created_at: e.created_at };
+    }),
+  });
+});
 
 app.get("/api/debug/recent", (_req, res) => {
   res.json({

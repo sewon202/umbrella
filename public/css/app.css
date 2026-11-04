@@ -654,17 +654,29 @@ body.no-tab.auth-signup main {
 .pick-stage {
   flex: 1 1 auto;
   position: relative;
+  z-index: 2;
   min-height: calc(160px * var(--ui-scale));
   margin: var(--gap-md) 0;
+  /* absolute cab이 아래 버튼 영역으로 넘치면 클릭이 먹통이 됨 → flow로 유지 */
+  overflow: visible;
 }
 .pick-stage .cab {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  position: relative;
+  left: auto;
+  right: auto;
+  top: auto;
+  transform: none;
   width: 100%;
   margin: 0;
+  z-index: 2;
+}
+.door:not(:disabled):not([aria-disabled="true"]) {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.door[aria-disabled="true"] {
+  pointer-events: none;
+  cursor: default;
 }
 .pick-view .msg { min-height: 40px; margin: 0; flex-shrink: 0; }
 .pick-actions {

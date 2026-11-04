@@ -25,7 +25,12 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=49";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=53";
+import {
+  isRentDoorClosed,
+  isReturnDetected,
+  isReturnDoorClosed,
+} from "/js/device-protocol.js?v=53";
 
 initUiScale();
 
@@ -50,15 +55,6 @@ const STATION_BY_KEY = (() => {
 const STATION_QR = Object.fromEntries(STATIONS.map((s) => [s.code, s.qr || s.code]));
 const $ = (id) => document.getElementById(id);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const waitFrames = (n = 2) => new Promise((resolve) => {
-  let left = n;
-  const step = () => {
-    left -= 1;
-    if (left <= 0) resolve();
-    else requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-});
 const DOOR_MS = 720;
 const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
 /** 보드 자동닫힘 대기 (아두이노 OPEN_MAX ≈ 25s + 여유) */
@@ -239,9 +235,9 @@ function syncUserChrome() {
   if (sub) sub.textContent = renting ? "QR 스캔으로 반납" : "QR 스캔으로 시작";
 }
 
-function myRentalHere() {
-  const r = state.user && state.user.activeRental;
-  return r && r.station === state.station ? r : null;
+/** 반납은 대여소가 달라도 가능 — 활성 대여만 있으면 반납 선택 모드 */
+function hasActiveRental() {
+  return !!(state.user && state.user.activeRental);
 }
 
 async function refreshInventory() {
@@ -264,6 +260,7 @@ async function enterStation(code) {
   state.selected = null;
   state.openSlot = null;
   state.returning = false;
+  state.busy = false;
   syncPickActions();
   $("placeErr").textContent = "";
   syncUserChrome();
@@ -366,8 +363,7 @@ function doorEl(slot) {
 }
 
 function render() {
-  const mine = myRentalHere();
-  const isReturnPick = !!mine; // 반납할 대여가 있으면 반납 선택 모드
+  const isReturnPick = hasActiveRental(); // 활성 대여면 반납 모드 (대여소 무관)
   const cab = $("cab");
   cab.innerHTML = "";
   $("pickTitle").textContent = isReturnPick ? "우산 반납" : "우산 번호 선택";
@@ -375,12 +371,13 @@ function render() {
     ? "비어 있는 칸을 골라 우산을 넣어 주세요."
     : `1~${MAX_HW_SLOT}번 칸만 하드웨어와 연결돼 있어요.`;
 
-  const locked = state.busy || state.returning;
+  const locked = !!(state.busy || state.returning);
   for (let i = 1; i <= TOTAL_SLOTS; i++) {
     const hw = i <= MAX_HW_SLOT;
-    // 대여: 보관중(in)만 파란 선택 / 반납: 비어있음(out)만 파란 선택(보관중도 탭은 가능)
-    const canAct = hw && (isReturnPick ? state.slots[i] === "out" : state.slots[i] === "in");
-    const canTap = hw && !locked && (isReturnPick ? true : canAct);
+    const status = state.slots[i];
+    // 대여: 보관중(in) / 반납: 비어있음(out) — 반납 시 보관중 칸도 탭해 안내 가능
+    const canAct = hw && (isReturnPick ? status === "out" : status === "in");
+    const canTap = hw && !locked && (isReturnPick ? (status === "out" || status === "in") : canAct);
     const wrap = document.createElement("div");
     wrap.className = "door-wrap";
     const b = document.createElement("button");
@@ -394,17 +391,27 @@ function render() {
       state.openSlot === i ? "open" : "",
       locked ? "door-locked" : "",
     ].filter(Boolean).join(" ");
-    // disabled 회색 대신 클래스만 — 문 열릴 때 다른 칸 색 유지
+    // prep만 native disabled — 반납 빈 칸이 disabled에 묶이지 않게
     b.disabled = !hw;
     if (!canTap) b.setAttribute("aria-disabled", "true");
     else b.removeAttribute("aria-disabled");
     const label = slotLabel(i, isReturnPick);
     b.setAttribute("aria-label", `${i}번 ${label}`);
     b.innerHTML = `<span class="n">${i}</span><span class="t">${label}</span>`;
-    b.onclick = () => {
-      if (!canTap) return;
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      if (!hw || locked) return;
+      if (isReturnPick) {
+        // 반납: out만 선택, in은 안내만 (클릭은 먹어야 함)
+        if (status !== "out" && status !== "in") return;
+        state.selected = status === "out" ? i : null;
+        setMsg(status === "out" ? "" : "이 칸에는 이미 우산이 있어 반납할 수 없어요.");
+        render();
+        return;
+      }
+      if (!canAct) return;
       state.selected = i;
-      setMsg(isReturnPick && !canAct ? "이 칸에는 이미 우산이 있어 반납할 수 없어요." : "");
+      setMsg("");
       render();
     };
     wrap.appendChild(b);
@@ -429,10 +436,6 @@ function render() {
   syncPickActions();
 }
 
-function servoAction(ev) {
-  return String((ev && ev.payload && ev.payload.action) || "");
-}
-
 /** 대여: IR로 우산이 사라진 뒤 보드가 문을 닫을 때까지 대기 */
 async function waitForRentDoorClose(station, slot, sinceMs) {
   const start = Date.now();
@@ -442,10 +445,12 @@ async function waitForRentDoorClose(station, slot, sinceMs) {
         station,
         slot,
         since: sinceMs,
-        match: (row) =>
-          row.kind === "servo" && /^(auto_close|auto_close_timeout)$/i.test(servoAction(row)),
+        match: isRentDoorClosed,
       });
-      if (ev) return /timeout/i.test(servoAction(ev)) ? "timeout" : "sensor";
+      if (ev) {
+        const action = String((ev.payload && ev.payload.action) || "");
+        return /timeout/i.test(action) ? "timeout" : "sensor";
+      }
     } catch (_) { /* keep waiting */ }
     await wait(DOOR_POLL_MS);
   }
@@ -477,7 +482,7 @@ async function waitForReturnDoorClose(station, slot, sinceMs) {
               station,
               slot,
               since: sinceMs,
-              match: (row) => row.kind === "return_ok",
+              match: isReturnDetected,
             });
             if (ok) {
               sawReturnOk = true;
@@ -488,11 +493,11 @@ async function waitForReturnDoorClose(station, slot, sinceMs) {
             station,
             slot,
             since: sinceMs,
-            match: (row) =>
-              row.kind === "servo" && /auto_close_return/i.test(servoAction(row)),
+            match: isReturnDoorClosed,
           });
           if (closed) {
-            finish(/timeout/i.test(servoAction(closed)) ? "timeout" : "sensor");
+            const action = String((closed.payload && closed.payload.action) || "");
+            finish(/timeout/i.test(action) ? "timeout" : "sensor");
             return;
           }
         } catch (_) { /* keep waiting */ }
@@ -539,8 +544,7 @@ async function playDoorClose(slot) {
 async function go() {
   if (!state.selected || state.busy) return;
   const slot = state.selected;
-  const mine = myRentalHere();
-  const isReturn = !!mine;
+  const isReturn = hasActiveRental();
   if (isReturn && state.slots[slot] !== "out") {
     setMsg("이 칸에는 이미 우산이 있어 반납할 수 없어요.");
     render();
@@ -1004,7 +1008,12 @@ function goTab(tab) {
   if (tab === "home") {
     closeQrCamera();
     hideMapSheet();
+    // 대여 직후 홈 버튼으로 오면 CTA가 갱신되어야 함 (반납하기)
+    syncUserChrome();
+    tick();
     show("v-home", { tab: "home" });
+    // 서버 activeRental 재확인 (로컬 state와 어긋난 경우 보정)
+    refreshInventory().catch(() => {});
   } else if (tab === "qr") {
     hideMapSheet();
     show("v-qr", { tab: "qr" });
@@ -1074,6 +1083,8 @@ $("pickHome").onclick = () => goTab("home");
 $("placeYes").onclick = async () => {
   state.selected = null;
   state.openSlot = null;
+  state.busy = false;
+  state.returning = false;
   setMsg("");
   try { await refreshInventory(); } catch (e) { setMsg(friendlyError(e)); }
   render();

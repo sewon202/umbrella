@@ -4,8 +4,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "bridge": "node bridge/serial-bridge.js",
-    "bridge:firebase": "BACKEND=firebase node bridge/serial-bridge.js",
+    "bridge": "STATION=C3 node bridge/serial-bridge.js",
+    "bridge:firebase": "BACKEND=firebase STATION=C3 node bridge/serial-bridge.js",
+    "sim": "node scripts/sim-device-link.mjs",
     "dev": "node server.js",
     "firebase:login": "firebase login",
     "firebase:use": "firebase use",

@@ -18,7 +18,6 @@ const vm = require("vm");
 
 const SERVER = process.env.SERVER_URL || "http://127.0.0.1:3000";
 const DEVICE_KEY = process.env.DEVICE_KEY || "umbrella-device";
-const STATION = (process.env.STATION || "A1").toUpperCase();
 const BAUD = 9600;
 const PING_MS = 2000;
 const CMD_TIMEOUT_MS = 20000;
@@ -64,7 +63,7 @@ async function pickPort() {
 }
 
 // ---------- 백엔드 어댑터 ----------
-function localBackend() {
+function localBackend(station) {
   async function call(method, urlPath, body) {
     const res = await fetch(SERVER + urlPath, {
       method,
@@ -76,14 +75,14 @@ function localBackend() {
   }
   return {
     mode: "local",
-    next: () => call("GET", `/api/device/next?station=${STATION}&key=${DEVICE_KEY}`),
+    next: () => call("GET", `/api/device/next?station=${station}&key=${DEVICE_KEY}`),
     done: (id) => call("POST", `/api/device/commands/${id}/done`),
     event: (p) => call("POST", "/api/device/event", p),
-    presence: (p) => call("POST", "/api/device/presence", { station: STATION, link: "wired", ...p }),
+    presence: (p) => call("POST", "/api/device/presence", { station, link: "wired", ...p }),
   };
 }
 
-async function firebaseBackend(cfg) {
+async function firebaseBackend(cfg, station) {
   const { initializeApp } = require("firebase/app");
   const { getAuth, signInWithEmailAndPassword } = require("firebase/auth");
   const {
@@ -108,7 +107,7 @@ async function firebaseBackend(cfg) {
     async next() {
       const snap = await getDocs(query(
         collection(db, "commands"),
-        where("station", "==", STATION),
+        where("station", "==", station),
         where("done", "==", 0),
         orderBy("created_at", "asc"),
         limit(10)
@@ -129,8 +128,8 @@ async function firebaseBackend(cfg) {
       }
     },
     async presence({ mcu_ok }) {
-      await setDoc(doc(db, "stations", STATION), {
-        code: STATION,
+      await setDoc(doc(db, "stations", station), {
+        code: station,
         last_seen: Date.now(),
         link: "wired",
         mcu_ok: !!mcu_ok,
@@ -146,7 +145,9 @@ async function main() {
   const cfg = loadConfig();
   const mode = resolveBackend(cfg);
   const POLL_MS = Number(process.env.POLL_MS || (cfg.cost && cfg.cost.bridgePollMs) || 4000);
-  const api = mode === "firebase" ? await firebaseBackend(cfg) : localBackend();
+  // 현장 live 거점 기본값 (형남공학관). 보드 STATION_CODE 와 같아야 함.
+  const STATION = String(process.env.STATION || "C3").toUpperCase();
+  const api = mode === "firebase" ? await firebaseBackend(cfg, STATION) : localBackend(STATION);
   const serialPath = await pickPort();
 
   console.log("========================================");
