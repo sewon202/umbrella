@@ -1485,6 +1485,30 @@ body.qr-open main {
 .qr-corner.tr { top: -1px; right: -1px; border-left: 0; border-bottom: 0; border-radius: 0 12px 0 0; }
 .qr-corner.bl { bottom: -1px; left: -1px; border-right: 0; border-top: 0; border-radius: 0 0 0 12px; }
 .qr-corner.br { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-radius: 0 0 12px 0; }
+.qr-cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  opacity: 0.95;
+  z-index: 2;
+  pointer-events: none;
+}
+.qr-cross::before,
+.qr-cross::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: #fff;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.35);
+}
+.qr-cross::before { width: 22px; height: 3.5px; }
+.qr-cross::after { width: 3.5px; height: 22px; }
 .qr-finder-loading {
   position: absolute;
   inset: 22%;
