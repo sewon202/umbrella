@@ -252,8 +252,8 @@ function inferNavDir(fromId, toId) {
 }
 
 const NAV_KEYS = {
-  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 380 },
-  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 380 },
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 520 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 520 },
   push: { enter: "enter-push", leave: "leave-push", ms: 400 },
   pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
   fade: { enter: "enter-fade", leave: "leave-fade", ms: 340 },
@@ -341,8 +341,12 @@ function show(id, { tab, dir, instant } = {}) {
   const navDir = motionOff ? "none" : (dir || inferNavDir(from && from.id, id));
   const keys = NAV_KEYS[navDir];
 
-  // rise/sink 동안 qr-open·map-open 미적용 — main 폭이 바뀌며 홈이 왼쪽으로 밀리는 현상 방지
-  const immersiveMode = (navDir === "rise" || navDir === "sink") ? "defer" : undefined;
+  // rise: 전환 끝날 때까지 immersive 클래스 지연 / sink: 내릴 동안 유지(패딩 점프 방지)
+  // ※ main max-width는 항상 430px — 폭 확장 버그는 CSS에서 제거됨
+  let immersiveMode;
+  if (navDir === "rise") immersiveMode = "defer";
+  else if (navDir === "sink" && from?.id === "v-qr") immersiveMode = "qr";
+  else if (navDir === "sink" && from?.id === "v-map") immersiveMode = "map";
   applyShowChrome(id, { tab, immersiveMode });
 
   if (!from || navDir === "none" || !keys) {

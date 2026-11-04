@@ -480,36 +480,40 @@ main.vt-busy > .view.vt-from[data-vt="leave-sink"][data-vt-run="1"] {
 }
 
 /*
- * 토스식 stagger — data-stagger로 명시적 delay (CSS var 곱셈 미지원 환경 대비)
- * 화면 rise와 별개로 요소가 아래에서 위로 순차 등장
+ * 토스식 stagger — rise(지도/QR) + tab(설정 등) 진입 시
+ * 상단→하단 시차로 아래에서 위로 순차 등장
  */
 .vt-stagger {
   will-change: transform, opacity;
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"] .vt-stagger {
+main.vt-busy > .view.vt-to[data-vt="enter-rise"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] .vt-stagger {
   opacity: 0;
-  transform: translate3d(0, 36px, 0);
+  transform: translate3d(0, 28px, 0);
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger {
+main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] .vt-stagger,
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagger {
   animation: vtStaggerUp var(--nav-stagger-dur) var(--nav-ease-ios) both;
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="0"] {
-  animation-delay: 90ms;
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] {
+  animation-delay: 60ms;
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="1"] {
-  animation-delay: 170ms;
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] {
+  animation-delay: 130ms;
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="2"] {
-  animation-delay: 250ms;
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] {
+  animation-delay: 200ms;
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="3"] {
-  animation-delay: 330ms;
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] {
+  animation-delay: 270ms;
 }
-main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[data-stagger="4"] {
-  animation-delay: 410ms;
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] {
+  animation-delay: 340ms;
 }
 @keyframes vtStaggerUp {
-  from { opacity: 0; transform: translate3d(0, 36px, 0); }
+  from { opacity: 0; transform: translate3d(0, 28px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
@@ -1469,21 +1473,25 @@ main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger[da
   cursor: not-allowed;
 }
 
-/* ---------- immersive QR (GCOO/SWING-inspired, cleaner) ---------- */
+/* ---------- immersive QR/Map — 항상 main(최대 430px) 안에만 ---------- */
 body.qr-open {
-  background: #000;
+  background: var(--bg);
 }
-body.qr-open main {
-  max-width: none;
+body.qr-open main,
+body.map-open main {
+  /* max-width는 main 기본(430px) 유지 — 데스크탑에서 옆으로 넓어지지 않음 */
   padding: 0;
   min-height: var(--app-h, 100svh);
+  overflow: hidden;
 }
 .view-immersive.on {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 50;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
   background: #000;
 }
 
