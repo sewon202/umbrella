@@ -512,26 +512,26 @@ main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { anim
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 760ms; }
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 920ms; }
 
-/* 박스 안 텍스트만 추가 시차 (이름 → 학번) */
-main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger-text,
+/* 박스 안 텍스트: 화면 슬라이드와 같은 가로 방향 + 시차 (이름 → 학번) */
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger-text {
+  opacity: 0;
+  transform: translate3d(16px, 0, 0);
+}
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] .vt-stagger-text {
   opacity: 0;
+  transform: translate3d(-16px, 0, 0);
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] .vt-stagger-text {
-  animation: vtStaggerTextIn var(--nav-stagger-dur) var(--nav-ease-stagger) both;
+  animation: vtStaggerRight var(--nav-stagger-dur) var(--nav-ease-stagger) both;
 }
 main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagger-text {
-  animation: vtStaggerTextIn var(--nav-stagger-dur) var(--nav-ease-stagger) both;
+  animation: vtStaggerLeft var(--nav-stagger-dur) var(--nav-ease-stagger) both;
 }
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="0"] {
   animation-delay: 180ms;
 }
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="1"] {
   animation-delay: 280ms;
-}
-@keyframes vtStaggerTextIn {
-  from { opacity: 0; transform: translate3d(0, 8px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes vtStaggerRight {
   from { opacity: 0; transform: translate3d(20px, 0, 0); }
