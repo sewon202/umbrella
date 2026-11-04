@@ -19,14 +19,14 @@
   --safe-bot: env(safe-area-inset-bottom, 0px);
   --ui-dur: 0.28s;
   --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* 화면 전환 — ease-in-out 가감속으로 부드럽게 */
-  --nav-tab-dur: 440ms;
-  --nav-push-dur: 440ms;
-  --nav-leave-dur: 380ms;
-  /* easeInOutCubic: 천천히 출발 → 중간 가속 → 부드럽게 착지 */
-  --nav-ease-slide: cubic-bezier(0.65, 0, 0.35, 1);
-  --nav-ease-out: cubic-bezier(0.33, 1, 0.68, 1);
-  --nav-ease-in: cubic-bezier(0.32, 0, 0.67, 0);
+  /* 토스식 탭 전환: ~220ms, 감속, 살짝만 슬라이드 */
+  --nav-tab-dur: 220ms;
+  --nav-push-dur: 320ms;
+  --nav-leave-dur: 200ms;
+  /* decelerate — 빠르게 출발 후 부드럽게 멈춤 (토스/Android decelerate) */
+  --nav-ease-slide: cubic-bezier(0, 0, 0.2, 1);
+  --nav-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --nav-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --nav-ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
   --app-bg:
     radial-gradient(120% 80% at 50% -10%, rgba(0, 155, 203, 0.14), transparent 55%),
@@ -218,8 +218,9 @@ main.vt-busy {
 
 /*
  * 전환 레이어
- * - 그라데이션은 움직이지 않는 main에만 칠함 (슬라이드해도 파란 배경이 안 잘림)
- * - 뷰는 투명 + 카드는 불투명 → 들어오면 빨리 불투명해져 겹침 최소화
+ * - 그라데이션은 고정 main에만 (슬라이드해도 안 잘림)
+ * - 탭: 토스식 — 이전은 제자리 fade-out, 새 화면만 10% 슬라이드+fade-in
+ * - push: 불투명 패널이 덮어서 두 화면이 비치지 않음
  */
 main.vt-busy {
   background: var(--app-bg);
@@ -271,109 +272,120 @@ body.map-open main.vt-busy > .view.vt-to {
 }
 
 /*
- * 탭: transform만 가감속 슬라이드 (opacity 섞으면 끊겨 보임)
- * 시작 위치를 CSS에 미리 고정해 첫 프레임 점프 방지
- * 이전 화면은 살짝 밀리며 페이드 — 배경은 main.vt-busy 고정 그라데이션
+ * 탭 (토스):
+ * - enter: 불투명 패널이 10%만 슬라이드 (이전 UI가 비치지 않음)
+ * - leave: 제자리 fade-out만 (같이 밀리지 않음)
+ * - background-attachment:fixed → 그라데이션이 슬라이드에 안 잘림
+ * - 선택자는 main.vt-busy > .view 투명 배경보다 높게
  */
-.view[data-vt="enter-tab-right"] {
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"],
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] {
   z-index: 3;
-  transform: translate3d(16%, 0, 0);
+  opacity: 1;
+  background: var(--app-bg);
+  background-attachment: fixed;
 }
-.view[data-vt="enter-tab-left"] {
-  z-index: 3;
-  transform: translate3d(-16%, 0, 0);
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] {
+  transform: translate3d(10%, 0, 0);
 }
-.view[data-vt="leave-tab-right"],
-.view[data-vt="leave-tab-left"] {
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"] {
+  transform: translate3d(-10%, 0, 0);
+}
+main.vt-busy > .view.vt-from[data-vt="leave-tab-right"],
+main.vt-busy > .view.vt-from[data-vt="leave-tab-left"] {
   z-index: 2;
+  opacity: 1;
   pointer-events: none;
 }
-.view[data-vt="enter-tab-right"][data-vt-run="1"] {
+main.vt-busy > .view.vt-to[data-vt="enter-tab-right"][data-vt-run="1"] {
   animation: navTabInRight var(--nav-tab-dur) var(--nav-ease-slide) both;
 }
-.view[data-vt="enter-tab-left"][data-vt-run="1"] {
+main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] {
   animation: navTabInLeft var(--nav-tab-dur) var(--nav-ease-slide) both;
 }
-.view[data-vt="leave-tab-right"][data-vt-run="1"] {
-  animation: navTabOutLeft var(--nav-leave-dur) var(--nav-ease-slide) both;
-}
-.view[data-vt="leave-tab-left"][data-vt-run="1"] {
-  animation: navTabOutRight var(--nav-leave-dur) var(--nav-ease-slide) both;
+main.vt-busy > .view.vt-from[data-vt="leave-tab-right"][data-vt-run="1"],
+main.vt-busy > .view.vt-from[data-vt="leave-tab-left"][data-vt-run="1"] {
+  animation: navTabFadeOut var(--nav-leave-dur) linear both;
 }
 @keyframes navTabInRight {
-  from { transform: translate3d(16%, 0, 0); }
+  from { transform: translate3d(10%, 0, 0); }
   to { transform: translate3d(0, 0, 0); }
 }
 @keyframes navTabInLeft {
-  from { transform: translate3d(-16%, 0, 0); }
+  from { transform: translate3d(-10%, 0, 0); }
   to { transform: translate3d(0, 0, 0); }
 }
-@keyframes navTabOutLeft {
-  from { transform: translate3d(0, 0, 0); opacity: 1; }
-  to { transform: translate3d(-7%, 0, 0); opacity: 0; }
-}
-@keyframes navTabOutRight {
-  from { transform: translate3d(0, 0, 0); opacity: 1; }
-  to { transform: translate3d(7%, 0, 0); opacity: 0; }
+@keyframes navTabFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
-/* —— 스택 push/pop —— */
-.view[data-vt="enter-push"] {
+/* —— 스택 push/pop: 불투명 덮개로 이전 화면 가림 —— */
+main.vt-busy > .view.vt-to[data-vt="enter-push"] {
   z-index: 3;
-  transform: translate3d(24%, 0, 0);
-  box-shadow: -10px 0 24px rgba(25, 31, 40, 0.06);
+  transform: translate3d(100%, 0, 0);
+  background: var(--app-bg);
+  background-attachment: fixed;
+  box-shadow: -8px 0 24px rgba(25, 31, 40, 0.08);
 }
-.view[data-vt="leave-push"] { z-index: 2; pointer-events: none; }
-.view[data-vt="enter-push"][data-vt-run="1"] {
-  animation: navPushIn var(--nav-push-dur) var(--nav-ease-slide) both;
+main.vt-busy > .view.vt-from[data-vt="leave-push"] {
+  z-index: 2;
+  pointer-events: none;
 }
-.view[data-vt="leave-push"][data-vt-run="1"] {
-  animation: navPushOut var(--nav-leave-dur) var(--nav-ease-slide) both;
+main.vt-busy > .view.vt-to[data-vt="enter-push"][data-vt-run="1"] {
+  animation: navPushIn var(--nav-push-dur) var(--nav-ease-ios) both;
+}
+main.vt-busy > .view.vt-from[data-vt="leave-push"][data-vt-run="1"] {
+  animation: navPushOut var(--nav-push-dur) var(--nav-ease-ios) both;
 }
 @keyframes navPushIn {
-  from { transform: translate3d(24%, 0, 0); box-shadow: -10px 0 24px rgba(25, 31, 40, 0.06); }
+  from { transform: translate3d(100%, 0, 0); }
   to { transform: translate3d(0, 0, 0); box-shadow: 0 0 0 transparent; }
 }
 @keyframes navPushOut {
-  from { transform: translate3d(0, 0, 0); opacity: 1; }
-  to { transform: translate3d(-6%, 0, 0); opacity: 0; }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-22%, 0, 0); }
 }
 
-.view[data-vt="enter-pop"] {
+main.vt-busy > .view.vt-to[data-vt="enter-pop"] {
   z-index: 2;
-  transform: translate3d(-8%, 0, 0);
+  transform: translate3d(-22%, 0, 0);
+  background: var(--app-bg);
+  background-attachment: fixed;
 }
-.view[data-vt="leave-pop"] {
+main.vt-busy > .view.vt-from[data-vt="leave-pop"] {
   z-index: 3;
-  box-shadow: -10px 0 24px rgba(25, 31, 40, 0.06);
+  background: var(--app-bg);
+  background-attachment: fixed;
+  box-shadow: -8px 0 24px rgba(25, 31, 40, 0.08);
 }
-.view[data-vt="enter-pop"][data-vt-run="1"] {
-  animation: navPopIn var(--nav-push-dur) var(--nav-ease-slide) both;
+main.vt-busy > .view.vt-to[data-vt="enter-pop"][data-vt-run="1"] {
+  animation: navPopIn var(--nav-push-dur) var(--nav-ease-ios) both;
 }
-.view[data-vt="leave-pop"][data-vt-run="1"] {
-  animation: navPopOut var(--nav-leave-dur) var(--nav-ease-slide) both;
+main.vt-busy > .view.vt-from[data-vt="leave-pop"][data-vt-run="1"] {
+  animation: navPopOut var(--nav-push-dur) var(--nav-ease-ios) both;
 }
 @keyframes navPopIn {
-  from { transform: translate3d(-8%, 0, 0); }
+  from { transform: translate3d(-22%, 0, 0); }
   to { transform: translate3d(0, 0, 0); }
 }
 @keyframes navPopOut {
-  from { transform: translate3d(0, 0, 0); opacity: 1; box-shadow: -10px 0 24px rgba(25, 31, 40, 0.06); }
-  to { transform: translate3d(20%, 0, 0); opacity: 0; box-shadow: -10px 0 24px rgba(25, 31, 40, 0.06); }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
 }
 
 /* —— 동일 depth fade —— */
-.view[data-vt="enter-fade"] { z-index: 3; opacity: 0; transform: translate3d(0, 10px, 0); }
-.view[data-vt="leave-fade"] { z-index: 2; opacity: 1; }
+.view[data-vt="enter-fade"] { z-index: 3; opacity: 0; }
+.view[data-vt="leave-fade"] { z-index: 2; opacity: 1; pointer-events: none; }
 .view[data-vt="enter-fade"][data-vt-run="1"] {
   animation: navFadeIn var(--nav-tab-dur) var(--nav-ease-slide) both;
 }
 .view[data-vt="leave-fade"][data-vt-run="1"] {
-  animation: navFadeOut var(--nav-leave-dur) var(--nav-ease-slide) both;
+  animation: navFadeOut var(--nav-leave-dur) linear both;
 }
 @keyframes navFadeIn {
-  from { opacity: 0; transform: translate3d(0, 10px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes navFadeOut {
   from { opacity: 1; }

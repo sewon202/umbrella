@@ -242,11 +242,11 @@ function inferNavDir(fromId, toId) {
 }
 
 const NAV_KEYS = {
-  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 480 },
-  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 480 },
-  push: { enter: "enter-push", leave: "leave-push", ms: 480 },
-  pop: { enter: "enter-pop", leave: "leave-pop", ms: 480 },
-  fade: { enter: "enter-fade", leave: "leave-fade", ms: 460 },
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 260 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 260 },
+  push: { enter: "enter-push", leave: "leave-push", ms: 360 },
+  pop: { enter: "enter-pop", leave: "leave-pop", ms: 360 },
+  fade: { enter: "enter-fade", leave: "leave-fade", ms: 240 },
 };
 
 function clearNavLayer(el) {
