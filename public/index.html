@@ -12,7 +12,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=83">
+<link rel="stylesheet" href="/css/app.css?v=84">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -254,25 +254,31 @@
     <img class="brand-logo" src="/img/ssu-mark.png?v=41" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
-  <div class="sheet settings-list">
-    <div class="settings-row vt-stagger" data-stagger="1">
-      <span>이름</span>
-      <strong id="setName">-</strong>
+  <div class="settings-stack">
+    <div class="sheet settings-card vt-stagger" data-stagger="1">
+      <div class="settings-row">
+        <span>이름</span>
+        <strong id="setName">-</strong>
+      </div>
     </div>
-    <div class="settings-row vt-stagger" data-stagger="2">
-      <span>학번</span>
-      <strong id="setSid">-</strong>
+    <div class="sheet settings-card vt-stagger" data-stagger="2">
+      <div class="settings-row">
+        <span>학번</span>
+        <strong id="setSid">-</strong>
+      </div>
     </div>
-  </div>
-  <div class="sheet settings-list settings-actions">
-    <button type="button" class="settings-action vt-stagger" data-stagger="3" id="settingsPayment">
-      <span>결제수단 등록</span>
-      <span class="settings-chevron" aria-hidden="true">›</span>
-    </button>
-    <button type="button" class="settings-action vt-stagger" data-stagger="4" id="settingsVerify">
-      <span>재학생 인증</span>
-      <span class="settings-chevron" aria-hidden="true">›</span>
-    </button>
+    <div class="sheet settings-card vt-stagger" data-stagger="3">
+      <button type="button" class="settings-action" id="settingsPayment">
+        <span>결제수단 등록</span>
+        <span class="settings-chevron" aria-hidden="true">›</span>
+      </button>
+    </div>
+    <div class="sheet settings-card vt-stagger" data-stagger="4">
+      <button type="button" class="settings-action" id="settingsVerify">
+        <span>재학생 인증</span>
+        <span class="settings-chevron" aria-hidden="true">›</span>
+      </button>
+    </div>
   </div>
   <div class="stack-gap vt-stagger" data-stagger="5">
     <button class="btn ghost" id="settingsLogout" type="button">로그아웃</button>
@@ -413,6 +419,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=83"></script>
+<script type="module" src="/js/app.js?v=84"></script>
 </body>
 </html>
