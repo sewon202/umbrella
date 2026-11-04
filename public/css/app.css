@@ -19,13 +19,16 @@
   --safe-bot: env(safe-area-inset-bottom, 0px);
   --ui-dur: 0.28s;
   --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* 토스식 화면 전환 — 설정/QR/로그인/지도 동일 템포 */
-  --nav-tab-dur: 200ms;
-  --nav-push-dur: 200ms;
-  --nav-leave-dur: 160ms;
-  --nav-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* 토스식 화면 전환 — 보이되 답답하지 않게 (~300ms) */
+  --nav-tab-dur: 360ms;
+  --nav-push-dur: 360ms;
+  --nav-leave-dur: 300ms;
+  --nav-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --nav-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --nav-ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
+  --app-bg:
+    radial-gradient(120% 80% at 50% -10%, rgba(0, 155, 203, 0.14), transparent 55%),
+    var(--bg);
   /* 뷰포트에 따라 JS가 갱신 — 홈 CTA ≈ 상단 2/3 기준 */
   --ui-scale: 1;
   --radius: calc(20px * var(--ui-scale));
@@ -112,9 +115,7 @@ body {
   line-height: 1.45;
   font-size: var(--fs-body);
   color: var(--ink);
-  background:
-    radial-gradient(120% 80% at 50% -10%, rgba(0, 155, 203, 0.14), transparent 55%),
-    var(--bg);
+  background: var(--app-bg);
   -webkit-font-smoothing: antialiased;
   padding-top: var(--safe-top);
   /* 하단 세이프에리어는 탭바/메인만 담당 — body에 두면 스크롤 여백이 생김 */
@@ -213,29 +214,42 @@ main.vt-busy {
 .view { display: none; flex: 1; flex-direction: column; min-height: 0; width: 100%; }
 .view.on { display: flex; }
 
-/* 전환 레이어 — 단색 배경·contain으로 페인트 비용 감소 */
+/*
+ * 전환 레이어
+ * - 그라데이션은 움직이지 않는 main에만 칠함 (슬라이드해도 파란 배경이 안 잘림)
+ * - 뷰는 투명 + 카드는 불투명 → 들어오면 빨리 불투명해져 겹침 최소화
+ */
+main.vt-busy {
+  background: var(--app-bg);
+}
 main.vt-busy > .view.vt-from,
 main.vt-busy > .view.vt-to {
   display: flex;
   position: absolute;
-  left: var(--pad-main-x);
-  right: var(--pad-main-x);
-  top: var(--pad-main-y);
-  bottom: calc(var(--tabbar-h) + (var(--tabbar-qr) / 3) + 28px);
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   width: auto;
   height: auto;
   margin: 0;
+  padding: var(--pad-main-y) var(--pad-main-x)
+    calc(var(--tabbar-h) + (var(--tabbar-qr) / 3) + 28px);
   overflow: hidden;
-  background: var(--bg);
-  contain: layout paint;
+  box-sizing: border-box;
+  background: transparent;
+  contain: layout;
   will-change: transform, opacity;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transform: translateZ(0);
 }
 body.no-tab main.vt-busy > .view.vt-from,
 body.no-tab main.vt-busy > .view.vt-to {
-  bottom: calc(24px * var(--ui-scale) + var(--safe-bot));
+  padding-bottom: calc(24px * var(--ui-scale) + var(--safe-bot));
+}
+body.auth-login.no-tab main.vt-busy > .view.vt-from,
+body.auth-login.no-tab main.vt-busy > .view.vt-to {
+  padding-bottom: calc(24px + var(--safe-bot));
 }
 main.vt-busy > .view.view-immersive.vt-from,
 main.vt-busy > .view.view-immersive.vt-to,
@@ -249,41 +263,52 @@ body.map-open main.vt-busy > .view.vt-to {
   right: 0;
   top: 0;
   bottom: 0;
+  padding: 0;
   z-index: 50;
   background: #05070c;
 }
 
-/* —— 탭 전환 (토스 하단탭 벤치: 짧은 이동 + fade, 이전은 fade-out만) —— */
+/*
+ * 탭: 이전 화면은 바로 숨김(겹침·그라데이션 끊김 방지),
+ * 들어오는 화면만 슬라이드 — 배경은 고정된 main.vt-busy 그라데이션
+ */
 .view[data-vt="enter-tab-right"],
-.view[data-vt="enter-tab-left"] { z-index: 3; opacity: 0; }
-.view[data-vt="leave-tab"] { z-index: 2; opacity: 1; }
+.view[data-vt="enter-tab-left"] {
+  z-index: 3;
+  opacity: 1;
+}
+.view[data-vt="leave-tab-right"],
+.view[data-vt="leave-tab-left"] {
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+}
 .view[data-vt="enter-tab-right"][data-vt-run="1"] {
   animation: navTabInRight var(--nav-tab-dur) var(--nav-ease-out) both;
 }
 .view[data-vt="enter-tab-left"][data-vt-run="1"] {
   animation: navTabInLeft var(--nav-tab-dur) var(--nav-ease-out) both;
 }
-.view[data-vt="leave-tab"][data-vt-run="1"] {
-  animation: navTabOut var(--nav-tab-dur) var(--nav-ease-in) both;
+.view[data-vt="leave-tab-right"][data-vt-run="1"],
+.view[data-vt="leave-tab-left"][data-vt-run="1"] {
+  /* leave는 즉시 숨김 — 애니 없이 슬롯만 유지 */
+  opacity: 0;
 }
 @keyframes navTabInRight {
-  from { transform: translate3d(10%, 0, 0); opacity: 0; }
+  from { transform: translate3d(18%, 0, 0); opacity: 0.92; }
   to { transform: translate3d(0, 0, 0); opacity: 1; }
 }
 @keyframes navTabInLeft {
-  from { transform: translate3d(-10%, 0, 0); opacity: 0; }
+  from { transform: translate3d(-18%, 0, 0); opacity: 0.92; }
   to { transform: translate3d(0, 0, 0); opacity: 1; }
 }
-@keyframes navTabOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
 
-/* —— 스택 push/pop (보관함 등) — 탭과 같은 200ms, 이동량·그림자 축소 —— */
+/* —— 스택 push/pop —— */
 .view[data-vt="enter-push"] {
   z-index: 3;
-  transform: translate3d(40%, 0, 0);
-  opacity: 0;
+  transform: translate3d(26%, 0, 0);
+  opacity: 1;
+  box-shadow: -12px 0 28px rgba(25, 31, 40, 0.08);
 }
 .view[data-vt="leave-push"] { z-index: 2; }
 .view[data-vt="enter-push"][data-vt-run="1"] {
@@ -293,22 +318,20 @@ body.map-open main.vt-busy > .view.vt-to {
   animation: navPushOut var(--nav-leave-dur) var(--nav-ease-in) both;
 }
 @keyframes navPushIn {
-  from { transform: translate3d(40%, 0, 0); opacity: 0; }
-  to { transform: translate3d(0, 0, 0); opacity: 1; }
+  from { transform: translate3d(26%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); box-shadow: 0 0 0 transparent; }
 }
 @keyframes navPushOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  0% { transform: translate3d(0, 0, 0); opacity: 1; }
+  18% { opacity: 0; }
+  100% { transform: translate3d(-8%, 0, 0); opacity: 0; }
 }
 
 .view[data-vt="enter-pop"] {
   z-index: 2;
-  opacity: 0;
+  opacity: 1;
 }
-.view[data-vt="leave-pop"] {
-  z-index: 3;
-  transform: translate3d(0, 0, 0);
-}
+.view[data-vt="leave-pop"] { z-index: 3; }
 .view[data-vt="enter-pop"][data-vt-run="1"] {
   animation: navPopIn var(--nav-push-dur) var(--nav-ease-out) both;
 }
@@ -316,12 +339,12 @@ body.map-open main.vt-busy > .view.vt-to {
   animation: navPopOut var(--nav-leave-dur) var(--nav-ease-in) both;
 }
 @keyframes navPopIn {
-  from { transform: translate3d(-12%, 0, 0); opacity: 0; }
-  to { transform: translate3d(0, 0, 0); opacity: 1; }
+  from { transform: translate3d(-10%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
 }
 @keyframes navPopOut {
-  from { transform: translate3d(0, 0, 0); opacity: 1; }
-  to { transform: translate3d(30%, 0, 0); opacity: 0; }
+  0% { transform: translate3d(0, 0, 0); opacity: 1; box-shadow: -12px 0 28px rgba(25, 31, 40, 0.08); }
+  100% { transform: translate3d(22%, 0, 0); opacity: 0; box-shadow: -12px 0 28px rgba(25, 31, 40, 0.08); }
 }
 
 /* —— 동일 depth fade —— */
@@ -331,10 +354,10 @@ body.map-open main.vt-busy > .view.vt-to {
   animation: navFadeIn var(--nav-tab-dur) var(--nav-ease-out) both;
 }
 .view[data-vt="leave-fade"][data-vt-run="1"] {
-  animation: navFadeOut 160ms var(--nav-ease-in) both;
+  animation: navFadeOut var(--nav-leave-dur) var(--nav-ease-in) both;
 }
 @keyframes navFadeIn {
-  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes navFadeOut {

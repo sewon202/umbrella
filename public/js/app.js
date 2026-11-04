@@ -25,7 +25,7 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=61";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=62";
 import {
   isRentDoorClosed,
   isReturnDetected,
@@ -242,11 +242,11 @@ function inferNavDir(fromId, toId) {
 }
 
 const NAV_KEYS = {
-  "tab-right": { enter: "enter-tab-right", leave: "leave-tab", ms: 210 },
-  "tab-left": { enter: "enter-tab-left", leave: "leave-tab", ms: 210 },
-  push: { enter: "enter-push", leave: "leave-push", ms: 210 },
-  pop: { enter: "enter-pop", leave: "leave-pop", ms: 210 },
-  fade: { enter: "enter-fade", leave: "leave-fade", ms: 180 },
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 400 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 400 },
+  push: { enter: "enter-push", leave: "leave-push", ms: 400 },
+  pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
+  fade: { enter: "enter-fade", leave: "leave-fade", ms: 360 },
 };
 
 function clearNavLayer(el) {
