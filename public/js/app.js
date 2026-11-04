@@ -25,7 +25,7 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=53";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=61";
 import {
   isRentDoorClosed,
   isReturnDetected,
@@ -190,11 +190,89 @@ function setTabActive(tab) {
   });
 }
 
-function show(id, { tab } = {}) {
-  document.querySelectorAll(".view").forEach((v) => v.classList.remove("on"));
-  $(id).classList.add("on");
+/** 화면 스택 깊이 — 토스식 push/pop 방향 추론 */
+const NAV_DEPTH = {
+  "v-login": 0,
+  "v-signup": 1,
+  "v-home": 10,
+  "v-settings": 10,
+  "v-qr": 20,
+  "v-map": 20,
+  "v-code": 21,
+  "v-place": 30,
+  "v-pick": 31,
+  "v-return-done": 40,
+};
+const TAB_ORDER = { "v-home": 0, "v-qr": 1, "v-settings": 2 };
+
+let navBusy = false;
+let navCleanupTimer = 0;
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** 설정/QR과 같은 짧은 탭 전환을 쓰는 화면 (로그인·지도 포함) */
+const FAST_NAV_ORDER = {
+  "v-login": 0,
+  "v-signup": 1,
+  "v-home": 2,
+  "v-qr": 3,
+  "v-map": 3,
+  "v-settings": 4,
+};
+
+function inferNavDir(fromId, toId) {
+  if (!fromId || fromId === toId) return "none";
+  const tabFrom = TAB_ORDER[fromId];
+  const tabTo = TAB_ORDER[toId];
+  // 하단 탭: 토스식 짧은 슬라이드+페이드
+  if (tabFrom != null && tabTo != null) return tabTo > tabFrom ? "tab-right" : "tab-left";
+  // 로그인↔홈, 홈↔지도 등도 설정/QR과 동일 속도
+  if (fromId in FAST_NAV_ORDER && toId in FAST_NAV_ORDER) {
+    const a = FAST_NAV_ORDER[fromId];
+    const b = FAST_NAV_ORDER[toId];
+    if (a === b) return "fade";
+    return b > a ? "tab-right" : "tab-left";
+  }
+  const dFrom = NAV_DEPTH[fromId] ?? 0;
+  const dTo = NAV_DEPTH[toId] ?? 0;
+  if (dTo === dFrom) return "fade";
+  return dTo > dFrom ? "push" : "pop";
+}
+
+const NAV_KEYS = {
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab", ms: 210 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab", ms: 210 },
+  push: { enter: "enter-push", leave: "leave-push", ms: 210 },
+  pop: { enter: "enter-pop", leave: "leave-pop", ms: 210 },
+  fade: { enter: "enter-fade", leave: "leave-fade", ms: 180 },
+};
+
+function clearNavLayer(el) {
+  if (!el) return;
+  el.classList.remove("vt-from", "vt-to");
+  el.removeAttribute("data-vt");
+  el.removeAttribute("data-vt-run");
+}
+
+function forceNavCleanup() {
+  if (navCleanupTimer) {
+    clearTimeout(navCleanupTimer);
+    navCleanupTimer = 0;
+  }
+  const main = document.querySelector("main");
+  if (main) main.classList.remove("vt-busy");
+  document.documentElement.removeAttribute("data-nav-dir");
+  document.querySelectorAll(".view.vt-from, .view.vt-to").forEach((v) => {
+    if (v.classList.contains("vt-from")) v.classList.remove("on");
+    clearNavLayer(v);
+  });
+  navBusy = false;
+}
+
+function applyShowChrome(id, { tab } = {}) {
   const shell = id === "v-home" || id === "v-settings";
-  const immersive = id === "v-qr" || id === "v-code" || id === "v-map";
   const authLogin = id === "v-login";
   const authSignup = id === "v-signup";
   document.body.classList.toggle("qr-open", id === "v-qr");
@@ -206,9 +284,90 @@ function show(id, { tab } = {}) {
   setShellScrollLock(shell);
   if (shell) setTabActive(tab || (id === "v-settings" ? "settings" : "home"));
   else if (id === "v-qr") setTabActive("qr");
+}
+
+function finishShow(id) {
+  const immersive = id === "v-qr" || id === "v-code" || id === "v-map";
   if (!immersive) window.scrollTo(0, 0);
-  // 홈 CTA 실측 보정(다른 화면도 같은 --ui-scale 유지)
-  requestAnimationFrame(() => updateUiScale({ force: true }));
+  // 전환 페인트 이후로 미뤄 버벅임 완화
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => updateUiScale({ force: true }));
+  });
+}
+
+/**
+ * 토스식 화면 전환 (Promise — 지도 초기화 등은 전환 끝난 뒤)
+ * - 탭·로그인·지도: 10% 슬라이드 + fade (≈200ms)
+ * - 보관함 스택: 짧은 push/pop
+ */
+function show(id, { tab, dir, instant } = {}) {
+  const to = $(id);
+  if (!to) return Promise.resolve();
+
+  if (navBusy) forceNavCleanup();
+
+  const from = document.querySelector(".view.on");
+  applyShowChrome(id, { tab });
+
+  if (from && from.id === id) {
+    finishShow(id);
+    return Promise.resolve();
+  }
+
+  const motionOff = instant || prefersReducedMotion();
+  const navDir = motionOff ? "none" : (dir || inferNavDir(from && from.id, id));
+  const keys = NAV_KEYS[navDir];
+
+  if (!from || navDir === "none" || !keys) {
+    document.querySelectorAll(".view.on").forEach((v) => v.classList.remove("on"));
+    to.classList.add("on");
+    finishShow(id);
+    return Promise.resolve();
+  }
+
+  const main = document.querySelector("main");
+  navBusy = true;
+  if (main) main.classList.add("vt-busy");
+  document.documentElement.setAttribute("data-nav-dir", navDir);
+
+  from.classList.add("vt-from");
+  to.classList.add("on", "vt-to");
+  from.setAttribute("data-vt", keys.leave);
+  to.setAttribute("data-vt", keys.enter);
+
+  // 한 프레임에 시작 상태 고정 후 재생 — 레이아웃 thrash 감소
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      from.setAttribute("data-vt-run", "1");
+      to.setAttribute("data-vt-run", "1");
+
+      let done = false;
+      const cleanup = () => {
+        if (done) return;
+        done = true;
+        if (navCleanupTimer) {
+          clearTimeout(navCleanupTimer);
+          navCleanupTimer = 0;
+        }
+        to.removeEventListener("animationend", onEnd);
+        from.classList.remove("on");
+        clearNavLayer(from);
+        clearNavLayer(to);
+        if (main) main.classList.remove("vt-busy");
+        document.documentElement.removeAttribute("data-nav-dir");
+        navBusy = false;
+        finishShow(id);
+        resolve();
+      };
+
+      const onEnd = (e) => {
+        if (e.target !== to) return;
+        cleanup();
+      };
+      to.addEventListener("animationend", onEnd);
+      navCleanupTimer = setTimeout(cleanup, keys.ms);
+    });
+  });
 }
 
 function setMsg(text) {
@@ -996,7 +1155,8 @@ function toggleMapSlots() {
 async function openCampusMap() {
   closeQrCamera();
   hideMapSheet();
-  show("v-map");
+  // 전환이 끝난 뒤 지도 SDK 초기화 — 전환 중 버벅임 방지
+  await show("v-map");
   await initCampusMap($("mapCanvas"), {
     onStationSelect: (station) => openMapSheet(station),
   });
@@ -1124,6 +1284,16 @@ window.addEventListener("hashchange", async () => {
 
 setInterval(tick, 1000);
 
+// 첫 페인트와 맞춰 로그인/가입 셸을 바로 고정 (세션 복구 전에 버튼이 튀지 않게)
+{
+  const bootAuth = authHash() === "signup" ? "v-signup" : "v-login";
+  if (bootAuth === "v-signup") {
+    $("v-login").classList.remove("on");
+    $("v-signup").classList.add("on");
+  }
+  applyShowChrome(bootAuth);
+}
+
 // 새로고침 시 세션 복구 (Firebase Auth / 로컬 24시간)
 (async () => {
   try {
@@ -1132,12 +1302,12 @@ setInterval(tick, 1000);
       applyUser(u);
       syncUserChrome();
       tick();
-      show("v-home", { tab: "home" });
+      show("v-home", { tab: "home", instant: true });
       return;
     }
   } catch (e) {
     console.warn("[umbrella] session restore failed", e);
   }
-  if (authHash() === "signup") show("v-signup");
-  else show("v-login");
+  if (authHash() === "signup") show("v-signup", { instant: true });
+  else show("v-login", { instant: true });
 })();

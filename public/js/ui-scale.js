@@ -171,7 +171,17 @@ function onFocusOut() {
 }
 
 export function initUiScale() {
-  syncAppHeight({ force: true });
+  // HTML 인라인으로 이미 잡은 --app-h가 실측과 비슷하면 유지 (로그인 하단 버튼 점프 방지)
+  const existing = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue("--app-h")
+  );
+  const measured = rawViewportHeight();
+  if (existing > 100 && measured > 0 && Math.abs(existing - measured) <= 24) {
+    layoutBaselineH = Math.round(existing);
+    document.documentElement.style.setProperty("--app-h", `${layoutBaselineH}px`);
+  } else {
+    syncAppHeight({ force: true });
+  }
   updateUiScale({ force: true });
   window.addEventListener("resize", onResize, { passive: true });
   if (window.visualViewport) {

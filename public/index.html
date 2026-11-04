@@ -4,10 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
 <title>숭실 우산 대여</title>
+<script>
+/* 첫 페인트 전에 셸 높이 고정 — 로그인 하단 버튼이 튀지 않게 */
+(function () {
+  var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
+  if (h) document.documentElement.style.setProperty("--app-h", Math.round(h) + "px");
+})();
+</script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=53">
+<link rel="stylesheet" href="/css/app.css?v=61">
 </head>
-<body>
+<body class="auth-login no-tab">
 <main>
 
 <section class="view on" id="v-login">
@@ -244,7 +251,7 @@
 <section class="view" id="v-settings">
   <div class="brand">
     <img class="brand-logo" src="/img/ssu-mark.png?v=41" alt="숭실대학교" width="76" height="32">
-    <div class="brand-text">설정</div>
+    <div class="brand-text">숭실 우산 대여</div>
   </div>
   <div class="sheet settings-list">
     <div class="settings-row">
@@ -392,6 +399,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=53"></script>
+<script type="module" src="/js/app.js?v=61"></script>
 </body>
 </html>

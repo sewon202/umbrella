@@ -19,6 +19,13 @@
   --safe-bot: env(safe-area-inset-bottom, 0px);
   --ui-dur: 0.28s;
   --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 토스식 화면 전환 — 설정/QR/로그인/지도 동일 템포 */
+  --nav-tab-dur: 200ms;
+  --nav-push-dur: 200ms;
+  --nav-leave-dur: 160ms;
+  --nav-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --nav-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --nav-ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
   /* 뷰포트에 따라 JS가 갱신 — 홈 CTA ≈ 상단 2/3 기준 */
   --ui-scale: 1;
   --radius: calc(20px * var(--ui-scale));
@@ -143,11 +150,20 @@ body.auth-login {
 body.auth-login main {
   height: calc(var(--app-h) - var(--safe-top));
   max-height: calc(var(--app-h) - var(--safe-top));
+  min-height: calc(var(--app-h) - var(--safe-top));
   overflow: hidden;
   overscroll-behavior: none;
+  /* 스케일 바뀌어도 하단 패딩이 안 흔들리게 고정 */
+  padding-bottom: calc(24px + var(--safe-bot));
+}
+/* 로그인 뷰가 첫 페인트부터 main을 채워 margin-top:auto가 바로 하단 고정 */
+body.auth-login #v-login.view.on {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
-/* 회원가입: 레이아웃 높이 유지 + 키보드 올라와도 스크롤로 아래 필드/버튼 확인 */
+/* 회원가입: 하단 버튼 + 키보드 시 스크롤 */
 body.auth-signup {
   overflow-x: hidden;
   overflow-y: auto;
@@ -161,15 +177,18 @@ body.auth-signup main {
   min-height: calc(var(--app-h) - var(--safe-top));
   max-height: none;
   overflow: visible;
-  /* 키보드에 가려진 하단 버튼까지 스크롤할 여유 */
-  padding-bottom: calc(28px * var(--ui-scale) + var(--safe-bot) + 40vh);
+  padding-bottom: calc(28px + var(--safe-bot) + 40vh);
 }
 body.auth-signup #v-signup.view.on {
+  display: flex;
+  flex-direction: column;
   flex: 0 0 auto;
-  min-height: auto;
+  /* 뷰포트만큼은 채워 버튼을 하단에, 내용은 더 늘어날 수 있음 */
+  min-height: calc(var(--app-h) - var(--safe-top) - 24px - var(--safe-bot));
 }
 
 main {
+  position: relative;
   max-width: 430px;
   margin: 0 auto;
   min-height: calc(100vh - var(--safe-top));
@@ -185,9 +204,143 @@ body.no-tab main { padding-bottom: calc(24px * var(--ui-scale) + var(--safe-bot)
 body.no-tab.auth-signup main {
   padding-bottom: calc(28px * var(--ui-scale) + var(--safe-bot) + 40vh);
 }
+main.vt-busy {
+  overflow: hidden;
+  pointer-events: none;
+  touch-action: none;
+}
 
-.view { display: none; flex: 1; flex-direction: column; min-height: 0; }
+.view { display: none; flex: 1; flex-direction: column; min-height: 0; width: 100%; }
 .view.on { display: flex; }
+
+/* 전환 레이어 — 단색 배경·contain으로 페인트 비용 감소 */
+main.vt-busy > .view.vt-from,
+main.vt-busy > .view.vt-to {
+  display: flex;
+  position: absolute;
+  left: var(--pad-main-x);
+  right: var(--pad-main-x);
+  top: var(--pad-main-y);
+  bottom: calc(var(--tabbar-h) + (var(--tabbar-qr) / 3) + 28px);
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  contain: layout paint;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
+body.no-tab main.vt-busy > .view.vt-from,
+body.no-tab main.vt-busy > .view.vt-to {
+  bottom: calc(24px * var(--ui-scale) + var(--safe-bot));
+}
+main.vt-busy > .view.view-immersive.vt-from,
+main.vt-busy > .view.view-immersive.vt-to,
+body.qr-open main.vt-busy > .view.vt-from,
+body.qr-open main.vt-busy > .view.vt-to,
+body.map-open main.vt-busy > .view.vt-from,
+body.map-open main.vt-busy > .view.vt-to {
+  position: fixed;
+  inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 50;
+  background: #05070c;
+}
+
+/* —— 탭 전환 (토스 하단탭 벤치: 짧은 이동 + fade, 이전은 fade-out만) —— */
+.view[data-vt="enter-tab-right"],
+.view[data-vt="enter-tab-left"] { z-index: 3; opacity: 0; }
+.view[data-vt="leave-tab"] { z-index: 2; opacity: 1; }
+.view[data-vt="enter-tab-right"][data-vt-run="1"] {
+  animation: navTabInRight var(--nav-tab-dur) var(--nav-ease-out) both;
+}
+.view[data-vt="enter-tab-left"][data-vt-run="1"] {
+  animation: navTabInLeft var(--nav-tab-dur) var(--nav-ease-out) both;
+}
+.view[data-vt="leave-tab"][data-vt-run="1"] {
+  animation: navTabOut var(--nav-tab-dur) var(--nav-ease-in) both;
+}
+@keyframes navTabInRight {
+  from { transform: translate3d(10%, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes navTabInLeft {
+  from { transform: translate3d(-10%, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes navTabOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* —— 스택 push/pop (보관함 등) — 탭과 같은 200ms, 이동량·그림자 축소 —— */
+.view[data-vt="enter-push"] {
+  z-index: 3;
+  transform: translate3d(40%, 0, 0);
+  opacity: 0;
+}
+.view[data-vt="leave-push"] { z-index: 2; }
+.view[data-vt="enter-push"][data-vt-run="1"] {
+  animation: navPushIn var(--nav-push-dur) var(--nav-ease-out) both;
+}
+.view[data-vt="leave-push"][data-vt-run="1"] {
+  animation: navPushOut var(--nav-leave-dur) var(--nav-ease-in) both;
+}
+@keyframes navPushIn {
+  from { transform: translate3d(40%, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes navPushOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.view[data-vt="enter-pop"] {
+  z-index: 2;
+  opacity: 0;
+}
+.view[data-vt="leave-pop"] {
+  z-index: 3;
+  transform: translate3d(0, 0, 0);
+}
+.view[data-vt="enter-pop"][data-vt-run="1"] {
+  animation: navPopIn var(--nav-push-dur) var(--nav-ease-out) both;
+}
+.view[data-vt="leave-pop"][data-vt-run="1"] {
+  animation: navPopOut var(--nav-leave-dur) var(--nav-ease-in) both;
+}
+@keyframes navPopIn {
+  from { transform: translate3d(-12%, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes navPopOut {
+  from { transform: translate3d(0, 0, 0); opacity: 1; }
+  to { transform: translate3d(30%, 0, 0); opacity: 0; }
+}
+
+/* —— 동일 depth fade —— */
+.view[data-vt="enter-fade"] { z-index: 3; opacity: 0; }
+.view[data-vt="leave-fade"] { z-index: 2; opacity: 1; }
+.view[data-vt="enter-fade"][data-vt-run="1"] {
+  animation: navFadeIn var(--nav-tab-dur) var(--nav-ease-out) both;
+}
+.view[data-vt="leave-fade"][data-vt-run="1"] {
+  animation: navFadeOut 160ms var(--nav-ease-in) both;
+}
+@keyframes navFadeIn {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes navFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
 
 .brand {
   display: flex;
@@ -296,6 +449,12 @@ body.no-tab.auth-signup main {
 
 .stack-gap { margin-top: auto; padding-top: calc(20px * var(--ui-scale)); }
 .stack-gap .btn + .btn { margin-top: calc(10px * var(--ui-scale)); }
+/* 로그인/가입: 하단 고정 (높이는 auth-* + 인라인 --app-h로 첫 페인트부터 맞춤) */
+#v-login .stack-gap,
+#v-signup .stack-gap {
+  margin-top: auto;
+  flex-shrink: 0;
+}
 /* 주 버튼 ↔ 확인 버튼이 같은 자리에서 크로스페이드 (중앙 UI 고정) */
 .action-stage {
   position: relative;
@@ -1520,9 +1679,10 @@ body.qr-open main {
 }
 .settings-row:last-child { border-bottom: 0; }
 .settings-row strong { color: var(--ink); font-weight: 800; }
-/* 로그아웃 ↔ 튀어나온 QR 원형 사이 자연스러운 공백 */
+/* 로그아웃을 탭바/QR에 더 가깝게 (살짝만 여유) */
 #v-settings .stack-gap {
-  padding-bottom: calc(var(--tabbar-qr) * 0.4 + 8px);
+  padding-bottom: 0;
+  margin-bottom: calc(var(--tabbar-qr) * -0.28);
 }
 
 .tabbar {
@@ -1604,6 +1764,15 @@ body.qr-open main {
   .pick-timer-slot .timer,
   .home-card {
     transition: none !important;
+  }
+  .view[data-vt],
+  .view[data-vt-run],
+  .view[data-vt-run]::after {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
   }
   .qr-scanline, .qr-stage.ready .qr-corner, .qr-toast.shake,
   .qr-success.is-on .qr-success-badge, .code-field input.shake,
