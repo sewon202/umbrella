@@ -12,7 +12,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=76">
+<link rel="stylesheet" href="/css/app.css?v=77">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -127,9 +127,9 @@
 </section>
 
 <section class="view view-immersive" id="v-map">
-  <div id="mapCanvas" class="map-canvas" role="application" aria-label="숭실대학교 우산 보관함 지도"></div>
-  <button type="button" class="map-back" id="mapBack" aria-label="홈으로">←</button>
-  <div class="map-float-hint">핀을 눌러 대여·반납 현황을 봐요</div>
+  <div id="mapCanvas" class="map-canvas vt-stagger" style="--stagger:0" role="application" aria-label="숭실대학교 우산 보관함 지도"></div>
+  <button type="button" class="map-back vt-stagger" style="--stagger:1" id="mapBack" aria-label="홈으로">←</button>
+  <div class="map-float-hint vt-stagger" style="--stagger:2">핀을 눌러 대여·반납 현황을 봐요</div>
 
   <div class="map-sheet" id="mapSheet" hidden>
     <div class="map-sheet-handle" aria-hidden="true"></div>
@@ -171,7 +171,7 @@
     <div class="qr-stage-bg" aria-hidden="true"></div>
 
     <div class="qr-chrome">
-      <header class="qr-top">
+      <header class="qr-top vt-stagger" style="--stagger:0">
         <button type="button" class="qr-icon-btn" id="qrBack" aria-label="닫기">
           <span aria-hidden="true">×</span>
         </button>
@@ -183,7 +183,7 @@
       </header>
 
       <!-- box-shadow 컷아웃으로 인식부만 밝게 (GCOO/SWING) -->
-      <div class="qr-viewfinder" aria-hidden="true">
+      <div class="qr-viewfinder vt-stagger" style="--stagger:1" aria-hidden="true">
         <span class="qr-corner tl"></span>
         <span class="qr-corner tr"></span>
         <span class="qr-corner bl"></span>
@@ -192,7 +192,7 @@
         <div class="qr-finder-loading" id="qrFinderLoading" aria-hidden="true"></div>
       </div>
 
-      <div class="qr-controls">
+      <div class="qr-controls vt-stagger" style="--stagger:2">
         <button type="button" class="qr-ctrl" id="qrManual">
           <span class="qr-ctrl-ico" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="3" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="3" y="17" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="17" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="17" width="5" height="5" rx="1.2" fill="currentColor"/></svg>
@@ -223,10 +223,10 @@
 </section>
 
 <section class="view" id="v-code">
-  <button type="button" class="nav-back" id="codeBack">← 돌아가기</button>
-  <h1 class="hero-title">코드 직접 입력</h1>
-  <p class="hero-sub">QR 아래 영문+숫자 코드가 있어요</p>
-  <div class="code-field">
+  <button type="button" class="nav-back vt-stagger" style="--stagger:0" id="codeBack">← 돌아가기</button>
+  <h1 class="hero-title vt-stagger" style="--stagger:1">코드 직접 입력</h1>
+  <p class="hero-sub vt-stagger" style="--stagger:2">QR 아래 영문+숫자 코드가 있어요</p>
+  <div class="code-field vt-stagger" style="--stagger:3">
     <input
       id="codeInput"
       type="text"
@@ -240,7 +240,7 @@
     >
   </div>
   <p class="err" id="codeErr"></p>
-  <div class="stack-gap">
+  <div class="stack-gap vt-stagger" style="--stagger:4">
     <button class="btn" id="codeSubmit" type="button">확인</button>
     <button class="btn ghost code-to-qr" id="codeToQr" type="button">
       <span class="code-to-qr-ico" aria-hidden="true">▣</span>
@@ -413,6 +413,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=76"></script>
+<script type="module" src="/js/app.js?v=77"></script>
 </body>
 </html>

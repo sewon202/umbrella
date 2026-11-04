@@ -223,21 +223,22 @@ const FAST_NAV_ORDER = {
   "v-settings": 4,
 };
 
+/** 아래에서 올라오는 풀스크린 (지도·QR·코드) */
+const RISE_VIEWS = new Set(["v-qr", "v-map", "v-code"]);
+
 function inferNavDir(fromId, toId) {
   if (!fromId || fromId === toId) return "none";
-  // QR·지도·코드입력: 슬라이드 대신 페이드 (로딩/카메라 화면이 슬라이드되면 어색함)
-  if (
-    fromId === "v-qr" || toId === "v-qr" ||
-    fromId === "v-code" || toId === "v-code" ||
-    fromId === "v-map" || toId === "v-map"
-  ) {
-    return "fade";
-  }
+  const toRise = RISE_VIEWS.has(toId);
+  const fromRise = RISE_VIEWS.has(fromId);
+  // 홈 → QR/지도: 아래에서 위로. 나갈 땐 아래로 내려감
+  if (toRise && !fromRise) return "rise";
+  if (fromRise && !toRise) return "sink";
+  if (fromRise && toRise) return "fade";
   const tabFrom = TAB_ORDER[fromId];
   const tabTo = TAB_ORDER[toId];
   // 하단 탭(홈↔설정): 토스식 짧은 슬라이드
   if (tabFrom != null && tabTo != null) return tabTo > tabFrom ? "tab-right" : "tab-left";
-  // 로그인↔홈, 홈↔지도 등
+  // 로그인↔홈 등
   if (fromId in FAST_NAV_ORDER && toId in FAST_NAV_ORDER) {
     const a = FAST_NAV_ORDER[fromId];
     const b = FAST_NAV_ORDER[toId];
@@ -256,6 +257,8 @@ const NAV_KEYS = {
   push: { enter: "enter-push", leave: "leave-push", ms: 400 },
   pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
   fade: { enter: "enter-fade", leave: "leave-fade", ms: 340 },
+  rise: { enter: "enter-rise", leave: "leave-rise", ms: 620 },
+  sink: { enter: "enter-sink", leave: "leave-sink", ms: 420 },
 };
 
 function clearNavLayer(el) {
