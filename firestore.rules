@@ -10,55 +10,94 @@ service cloud.firestore {
     function isOwner(uid) {
       return signedIn() && request.auth.uid == uid;
     }
+    function isStudent() {
+      return signedIn() && !isDevice();
+    }
+    function validSlot(slot) {
+      return slot is int && slot >= 1 && slot <= 2;
+    }
+    function validCommandAction(action) {
+      return action in ['open', 'open_return'];
+    }
 
-    // 사용자 프로필
+    // 사용자 프로필 — 본인 또는 device(관리)만
     match /students/{uid} {
       allow read: if isOwner(uid) || isDevice();
       allow create: if isOwner(uid)
         && request.resource.data.keys().hasAll(['studentId', 'name', 'created_at'])
         && request.resource.data.studentId is string
-        && request.resource.data.name is string;
-      allow update: if isOwner(uid) || isDevice();
+        && request.resource.data.name is string
+        && request.resource.data.activeRental == null;
+      allow update: if isDevice()
+        || (isOwner(uid)
+          && request.resource.data.studentId == resource.data.studentId
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['activeRental', 'updated_at', 'name']));
     }
 
-    // 우산 보관 슬롯 (station-slot)
+    // 우산 슬롯 — 학생은 대여(in→out)·반납(out→in)만, 생성/기타는 device
     match /umbrellas/{id} {
       allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow create: if isDevice();
+      allow update: if isDevice()
+        || (isStudent()
+          && request.resource.data.station == resource.data.station
+          && request.resource.data.slot == resource.data.slot
+          && (
+            (resource.data.status == 'in' && request.resource.data.status == 'out'
+              && request.resource.data.rented_by is string)
+            ||
+            (resource.data.status == 'out' && request.resource.data.status == 'in'
+              && request.resource.data.rented_by == null)
+          ));
     }
 
-    // 대여 기록
+    // 대여 기록 — 본인 생성/반납, 목록 조회는 device(관리)
     match /rentals/{id} {
-      allow read: if signedIn() && (
-        resource.data.studentUid == request.auth.uid || isDevice()
-      );
-      allow create: if signedIn()
+      allow read: if isDevice()
+        || (signedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if isStudent()
         && request.resource.data.studentUid == request.auth.uid
-        && request.resource.data.status == 'active';
-      allow update: if signedIn() && (
-        resource.data.studentUid == request.auth.uid || isDevice()
-      );
+        && request.resource.data.status == 'active'
+        && request.resource.data.returned_at == null
+        && validSlot(request.resource.data.slot);
+      allow update: if isDevice()
+        || (isStudent()
+          && resource.data.studentUid == request.auth.uid
+          && resource.data.status == 'active'
+          && request.resource.data.status == 'returned'
+          && request.resource.data.studentUid == resource.data.studentUid);
     }
 
+    // 문 열기 명령 — 학생/device 생성, 읽기·완료 처리는 device만
     match /commands/{id} {
-      allow read: if signedIn();
+      allow read: if isDevice();
       allow create: if signedIn()
         && request.resource.data.station is string
-        && request.resource.data.slot is int
-        && request.resource.data.slot >= 1
-        && request.resource.data.slot <= 2
-        && request.resource.data.action is string
-        && request.resource.data.done == 0;
-      allow update: if signedIn();
+        && validSlot(request.resource.data.slot)
+        && validCommandAction(request.resource.data.action)
+        && request.resource.data.done == 0
+        && request.resource.data.done_at == null;
+      allow update: if isDevice()
+        && request.resource.data.done == 1
+        && resource.data.done == 0;
     }
 
+    // 보드 이벤트 — 기록은 device만, 앱 애니메이션용 읽기는 로그인 사용자
     match /device_events/{id} {
-      allow read, create: if signedIn();
+      allow read: if signedIn();
+      allow create: if isDevice()
+        && request.resource.data.station is string
+        && request.resource.data.kind is string
+        && request.resource.data.created_at is int;
+      allow update, delete: if false;
     }
 
+    // 거점 메타/하트비트 — 공개 읽기, 쓰기는 device만
     match /stations/{id} {
       allow read: if true;
-      allow write: if signedIn();
+      allow create, update: if isDevice();
+      allow delete: if false;
     }
   }
 }

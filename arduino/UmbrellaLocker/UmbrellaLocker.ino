@@ -18,7 +18,8 @@
 
   핀: RFID1 SS D10 / RST D9, RFID2 SS D8 / RST D7, Servo D5 / D6, IR D2 / D3
   업로드 전 WIFI_* 와 STATION_CODE 를 현장 값으로 바꾸세요.
-  FB_API_KEY / DEVICE_* 는 웹 firebase-config.js 와 같아야 합니다.
+  FB_API_KEY 는 보드 전용 API 키 (웹 Browser key 와 다름, 리퍼러 제한 없음).
+  DEVICE_PASS 는 Firebase Auth(device@…) 비밀번호와 같게.
 */
 
 #include <SPI.h>
@@ -30,7 +31,7 @@
 // ========== 사용자 설정 ==========
 const char* WIFI_SSID    = "ASCEE";
 const char* WIFI_PASS    = "a028287138";
-const char* FB_API_KEY   = "AIzaSyDoS0nXsS8lGBULN-U-WcLs51aqWC4lZfk";
+const char* FB_API_KEY   = "AIzaSyAEBkaVsNmojtkwePnQMISElzPNK4nY1ZE";
 const char* FB_PROJECT   = "umbrella-c8cf0";
 const char* DEVICE_EMAIL = "device@umbrella.local";
 const char* DEVICE_PASS  = "device-change-me";

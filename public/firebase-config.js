@@ -21,6 +21,8 @@ window.UMBRELLA = {
   //   http://localhost:3000
   //   http://127.0.0.1:3000
   kakaoMapAppKey: "849e1b3b73f4033abff2609124090bda",
-  deviceEmail: "device@umbrella.local",
-  devicePassword: "device-change-me"
+  // device 비밀번호는 공개 설정에 두지 않음.
+  // - 브리지: device-secrets.local.js 또는 DEVICE_PASSWORD
+  // - admin/device.html: 로그인 시 입력
+  deviceEmail: "device@umbrella.local"
 };

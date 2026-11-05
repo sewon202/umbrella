@@ -320,10 +320,21 @@ function createFirebaseBackend() {
       });
     },
 
-    async loginDevice() {
+    async loginDevice(password) {
       const email = cfg.deviceEmail || "device@umbrella.local";
-      const password = cfg.devicePassword || "device-change-me";
-      await signInWithEmailAndPassword(auth, email, password);
+      const STORAGE_KEY = "umbrella_device_pw";
+      let pw = typeof password === "string" ? password : "";
+      if (!pw && typeof sessionStorage !== "undefined") {
+        try { pw = sessionStorage.getItem(STORAGE_KEY) || ""; } catch (_) { /* ignore */ }
+      }
+      if (!pw && typeof window !== "undefined" && typeof window.prompt === "function") {
+        pw = window.prompt("device 계정 비밀번호를 입력하세요") || "";
+        if (pw) {
+          try { sessionStorage.setItem(STORAGE_KEY, pw); } catch (_) { /* ignore */ }
+        }
+      }
+      if (!pw) throw new Error("device 비밀번호가 필요해요. (공개 설정에서 제거됨)");
+      await signInWithEmailAndPassword(auth, email, pw);
       await this.seedInventory();
       return { ok: true, email };
     },
@@ -424,10 +435,14 @@ function createFirebaseBackend() {
 
     async listStudents() {
       requireUser();
+      if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) {
+        throw new Error("device 계정만 사용자 목록을 볼 수 있어요.");
+      }
       return (await getDocs(collection(db, "students"))).docs.map((d) => ({ uid: d.id, ...d.data() }));
     },
 
     async listAllUmbrellas() {
+      requireUser();
       const rows = (await getDocs(collection(db, "umbrellas"))).docs.map(docData);
       return rows.sort((a, b) =>
         a.station === b.station ? a.slot - b.slot : a.station.localeCompare(b.station)
@@ -435,6 +450,10 @@ function createFirebaseBackend() {
     },
 
     async listActiveRentals() {
+      requireUser();
+      if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) {
+        throw new Error("device 계정만 전체 대여 목록을 볼 수 있어요.");
+      }
       const q = query(
         collection(db, "rentals"),
         where("status", "==", "active"),
@@ -446,6 +465,10 @@ function createFirebaseBackend() {
 
     async setUmbrellaStatus({ station, slot, status }) {
       if (!["in", "out"].includes(status)) throw new Error("status는 in/out 만 가능해요.");
+      requireUser();
+      if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) {
+        throw new Error("device 계정만 슬롯 상태를 바꿀 수 있어요.");
+      }
       await setDoc(doc(db, "umbrellas", umbrellaId(station, slot)), {
         station, slot, status, updated_at: Date.now(),
         ...(status === "in" ? { rented_by: null, rented_at: null } : {}),
@@ -456,6 +479,7 @@ function createFirebaseBackend() {
     /** 없는 문서만 생성 (device 로그인·관리 화면에서만 호출 → 비용 최소) */
     async seedInventory() {
       if (!auth.currentUser) return;
+      if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) return;
       for (const s of STATIONS) {
         await setDoc(doc(db, "stations", s.code), s, { merge: true });
         for (let slot = 1; slot <= MAX_HW_SLOT; slot++) {
@@ -519,13 +543,23 @@ function createFirebaseBackend() {
      * match(row) 가 있으면 통과한 첫 이벤트만 반환.
      */
     async getRecentDeviceEvent({ station, slot, since = 0, match } = {}) {
+      if (!station) throw new Error("station 이 필요해요.");
       const snap = await getDocs(
-        query(collection(db, "device_events"), orderBy("created_at", "desc"), limit(40))
+        query(
+          collection(db, "device_events"),
+          where("station", "==", station),
+          orderBy("created_at", "desc"),
+          limit(40)
+        )
       );
       return pickMatchingEvent(snap.docs.map(docData), { station, slot, since, match });
     },
 
     async debugRecent() {
+      requireUser();
+      if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) {
+        throw new Error("device 계정만 디버그 로그를 볼 수 있어요.");
+      }
       const [cmds, evs, umbs] = await Promise.all([
         getDocs(query(collection(db, "commands"), orderBy("created_at", "desc"), limit(10))),
         getDocs(query(collection(db, "device_events"), orderBy("created_at", "desc"), limit(10))),
@@ -551,7 +585,7 @@ export const backend = mode === "firebase" ? createFirebaseBackend() : createLoc
 export const signup = (p) => backend.signup(p);
 export const login = (p) => backend.login(p);
 export const restoreSession = () => backend.restoreSession();
-export const loginDevice = () => backend.loginDevice();
+export const loginDevice = (password) => backend.loginDevice(password);
 export const logoutUser = () => backend.logout();
 export const getStationInventory = (s) => backend.getStationInventory(s);
 export const getMyActiveRental = (uid) => backend.getMyActiveRental(uid);

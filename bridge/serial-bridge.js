@@ -30,6 +30,38 @@ function loadConfig() {
   return sandbox.window.UMBRELLA || {};
 }
 
+/** device 비밀번호: env > device-secrets.local.js > (구) firebase-config */
+function resolveDeviceCreds(cfg) {
+  let email =
+    process.env.DEVICE_EMAIL ||
+    cfg.deviceEmail ||
+    "device@umbrella.local";
+  let password = process.env.DEVICE_PASSWORD || "";
+  if (!password) {
+    const localPath = path.join(__dirname, "..", "device-secrets.local.js");
+    if (fs.existsSync(localPath)) {
+      try {
+        const secrets = require(localPath);
+        if (secrets.deviceEmail) email = secrets.deviceEmail;
+        password = secrets.devicePassword || "";
+      } catch (e) {
+        console.error("[firebase] device-secrets.local.js 로드 실패:", e.message);
+      }
+    }
+  }
+  if (!password && cfg.devicePassword) {
+    password = cfg.devicePassword;
+    console.warn("[firebase] 공개 firebase-config 의 devicePassword 사용 중 — device-secrets.local.js 로 옮기세요.");
+  }
+  if (!password) {
+    console.error("device 비밀번호가 없어요.");
+    console.error("  cp device-secrets.example.js device-secrets.local.js");
+    console.error("  또는 DEVICE_PASSWORD=... npm run bridge:firebase");
+    process.exit(1);
+  }
+  return { email, password };
+}
+
 function resolveBackend(cfg) {
   const env = process.env.BACKEND;
   if (env === "firebase" || env === "local") return env;
@@ -95,11 +127,8 @@ async function firebaseBackend(cfg, station) {
   const db = getFirestore(app);
   const maxSlot = (cfg.cost && cfg.cost.maxHwSlot) || 2;
 
-  await signInWithEmailAndPassword(
-    auth,
-    cfg.deviceEmail || "device@umbrella.local",
-    cfg.devicePassword || "device-change-me"
-  );
+  const { email, password } = resolveDeviceCreds(cfg);
+  await signInWithEmailAndPassword(auth, email, password);
   console.log("[firebase] device login OK");
 
   return {
