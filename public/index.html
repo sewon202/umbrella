@@ -4,6 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
 <title>숭실 우산 대여</title>
+<meta name="description" content="숭실대학교 우산 대여 — QR로 가까운 보관함에서 바로 빌리고 반납해요.">
+<meta name="theme-color" content="#009BCB">
+<link rel="icon" href="/img/icon-umbrella.svg" type="image/svg+xml">
+<link rel="icon" href="/img/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="숭실 우산 대여">
+<meta property="og:title" content="숭실 우산 대여">
+<meta property="og:description" content="숭실대학교 우산 대여 — QR로 가까운 보관함에서 바로 빌리고 반납해요.">
+<meta property="og:url" content="https://umbrella-c8cf0.web.app/">
+<meta property="og:image" content="https://umbrella-c8cf0.web.app/img/og-umbrella.jpg">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="720">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="숭실 우산 대여">
+<meta name="twitter:description" content="숭실대학교 우산 대여 — QR로 가까운 보관함에서 바로 빌리고 반납해요.">
+<meta name="twitter:image" content="https://umbrella-c8cf0.web.app/img/og-umbrella.jpg">
 <script>
 /* 첫 페인트 전에 셸 높이 고정 — 로그인 하단 버튼이 튀지 않게 */
 (function () {
@@ -12,7 +29,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=86">
+<link rel="stylesheet" href="/css/app.css?v=89">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -197,7 +214,7 @@
           <span class="qr-ctrl-ico" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="3" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="3" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="10" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="3" y="17" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="10" y="17" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="17" y="17" width="5" height="5" rx="1.2" fill="currentColor"/></svg>
           </span>
-          <span class="qr-ctrl-label">번호 직접입력</span>
+          <span class="qr-ctrl-label">코드 직접 입력</span>
         </button>
         <button type="button" class="qr-ctrl" id="qrTorch" aria-pressed="false">
           <span class="qr-ctrl-ico" aria-hidden="true">
@@ -222,10 +239,10 @@
   </div>
 </section>
 
-<section class="view" id="v-code">
+<section class="view view-immersive view-code" id="v-code">
   <button type="button" class="nav-back vt-stagger" data-stagger="0" id="codeBack">← 돌아가기</button>
   <h1 class="hero-title vt-stagger" data-stagger="1">코드 직접 입력</h1>
-  <p class="hero-sub vt-stagger" data-stagger="2">QR 아래 영문+숫자 코드가 있어요</p>
+  <p class="hero-sub vt-stagger" data-stagger="2">QR 아래 영문+숫자 코드를 입력해 주세요</p>
   <div class="code-field vt-stagger" data-stagger="3">
     <input
       id="codeInput"
@@ -417,6 +434,6 @@
 </nav>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=86"></script>
+<script type="module" src="/js/app.js?v=89"></script>
 </body>
 </html>

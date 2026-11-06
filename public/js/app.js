@@ -26,7 +26,7 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=62";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=63";
 import {
   isRentDoorClosed,
   isReturnDetected,
@@ -252,9 +252,9 @@ function inferNavDir(fromId, toId) {
 }
 
 const NAV_KEYS = {
-  /* 마지막 stagger(920ms)+dur(460ms) ≈ 1380 */
-  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 1450 },
-  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 1450 },
+  /* 마지막 stagger(640ms)+dur(400ms) ≈ 1040 */
+  "tab-right": { enter: "enter-tab-right", leave: "leave-tab-right", ms: 1150 },
+  "tab-left": { enter: "enter-tab-left", leave: "leave-tab-left", ms: 1150 },
   push: { enter: "enter-push", leave: "leave-push", ms: 400 },
   pop: { enter: "enter-pop", leave: "leave-pop", ms: 400 },
   fade: { enter: "enter-fade", leave: "leave-fade", ms: 340 },
@@ -293,13 +293,17 @@ function applyShowChrome(id, { tab, immersiveMode } = {}) {
     /* qr-open/map-open 아직 적용하지 않음 — main 폭·배경 흔들림 방지 */
   } else if (immersiveMode === "qr") {
     document.body.classList.add("qr-open");
-    document.body.classList.remove("map-open");
+    document.body.classList.remove("map-open", "code-open");
   } else if (immersiveMode === "map") {
     document.body.classList.add("map-open");
-    document.body.classList.remove("qr-open");
+    document.body.classList.remove("qr-open", "code-open");
+  } else if (immersiveMode === "code") {
+    document.body.classList.add("code-open");
+    document.body.classList.remove("qr-open", "map-open");
   } else {
     document.body.classList.toggle("qr-open", id === "v-qr");
     document.body.classList.toggle("map-open", id === "v-map");
+    document.body.classList.toggle("code-open", id === "v-code");
   }
   document.body.classList.toggle("auth-login", authLogin);
   document.body.classList.toggle("auth-signup", authSignup);
@@ -307,7 +311,7 @@ function applyShowChrome(id, { tab, immersiveMode } = {}) {
   // iOS Safari: 홈/설정은 보이는 뷰포트에 고정 (주소창 때문에 생기던 페이지 스크롤 차단)
   setShellScrollLock(shell);
   if (shell) setTabActive(tab || (id === "v-settings" ? "settings" : "home"));
-  else if (id === "v-qr") setTabActive("qr");
+  else if (id === "v-qr" || id === "v-code") setTabActive("qr");
 }
 
 function finishShow(id) {
@@ -348,6 +352,7 @@ function show(id, { tab, dir, instant } = {}) {
   if (navDir === "rise") immersiveMode = "defer";
   else if (navDir === "sink" && from?.id === "v-qr") immersiveMode = "qr";
   else if (navDir === "sink" && from?.id === "v-map") immersiveMode = "map";
+  else if (navDir === "sink" && from?.id === "v-code") immersiveMode = "code";
   applyShowChrome(id, { tab, immersiveMode });
 
   if (!from || navDir === "none" || !keys) {
@@ -1075,12 +1080,21 @@ async function handleQrPayload(hit) {
   }
 }
 
-function openCodeEntry() {
+async function openCodeEntry() {
   closeQrCamera();
   $("codeErr").textContent = "";
   $("codeInput").value = "";
-  show("v-code");
-  setTimeout(() => $("codeInput").focus(), 80);
+  // 전환·레이아웃이 끝난 뒤 포커스 — 중장 포커스로 iOS 확대/축소처럼 보이던 문제 방지
+  await show("v-code");
+  const input = $("codeInput");
+  if (!input) return;
+  requestAnimationFrame(() => {
+    try {
+      input.focus({ preventScroll: true });
+    } catch (_) {
+      input.focus();
+    }
+  });
 }
 
 function submitCodeEntry() {

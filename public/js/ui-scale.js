@@ -2,6 +2,9 @@
  * 폰 화면 높이에 맞춰 UI 배율(--ui-scale)을 잡는다.
  * 기준: 홈 CTA 하단 ≈ (뷰포트 − 하단바) 높이의 ~74% (2/3보다 약간 아래).
  *
+ * 홈 대여시간 칸은 배율에 넣지 않는다 — 칸이 열리면 UI를 축소하지 않고 아래로만 민다.
+ * 설정 등 다른 탭은 홈(타이머 제외)에서 잡힌 배율을 그대로 쓴다.
+ *
  * iOS Safari: 100vh/dvh가 주소창을 접은 "큰 뷰포트"라 첫 화면보다 커서 스크롤이 생김.
  * → visualViewport / innerHeight로 --app-h 를 잡고 셸을 그 높이에 고정.
  *
@@ -17,6 +20,8 @@ const MAX_SCALE = 1;
 
 /** 키보드 없는 상태의 기준 높이 (키보드로 줄어든 값으로 덮어쓰지 않음) */
 let layoutBaselineH = 0;
+/** 홈에서 타이머 제외하고 맞춘 배율 — 설정 등에서 재사용 */
+let lastHomeBaseScale = 0;
 
 function clamp(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
@@ -101,6 +106,24 @@ function contentTargetY() {
   return (vh - tabbarHeight()) * TARGET_RATIO;
 }
 
+/** 대여시간 슬롯이 차지한 높이(+마진) — 스케일 계산에서 제외 */
+function homeTimerLayoutExtra() {
+  const slot = document.getElementById("homeTimerSlot");
+  if (!slot) return 0;
+  const h = slot.getBoundingClientRect().height;
+  if (!(h > 0.5)) return 0;
+  const mb = parseFloat(getComputedStyle(slot).marginBottom) || 0;
+  return h + mb;
+}
+
+/** 타이머를 빼서 본 홈 CTA 하단 Y (배율 산정용) */
+function homeCtaBottomForScale(btn) {
+  if (!btn) return 0;
+  const bottom = btn.getBoundingClientRect().bottom;
+  if (!(bottom > 40)) return 0;
+  return Math.max(40, bottom - homeTimerLayoutExtra());
+}
+
 export function updateUiScale({ force = false } = {}) {
   // 키보드로 뷰포트만 줄어든 경우 배율·높이 재계산하지 않음
   if (!force && isTextInputFocused()) {
@@ -119,12 +142,16 @@ export function updateUiScale({ force = false } = {}) {
 
   let scale;
   if (onHome) {
-    const bottom = btn.getBoundingClientRect().bottom;
+    const bottom = homeCtaBottomForScale(btn);
     if (bottom > 40) {
       scale = clamp((target * prev) / bottom, MIN_SCALE, MAX_SCALE);
     } else {
       scale = clamp(target / DESIGN_CTA_BOTTOM, MIN_SCALE, MAX_SCALE);
     }
+    lastHomeBaseScale = scale;
+  } else if (lastHomeBaseScale > 0) {
+    // 설정 등: 홈(타이머 무시)에서 맞춘 배율 유지 — 타이머 때문에 작아지지 않게
+    scale = clamp(lastHomeBaseScale, MIN_SCALE, MAX_SCALE);
   } else {
     scale = clamp(target / DESIGN_CTA_BOTTOM, MIN_SCALE, MAX_SCALE);
   }
@@ -134,11 +161,12 @@ export function updateUiScale({ force = false } = {}) {
   if (!onHome) return;
   requestAnimationFrame(() => {
     if (isTextInputFocused()) return;
-    const bottom2 = btn.getBoundingClientRect().bottom;
+    const bottom2 = homeCtaBottomForScale(btn);
     if (!(bottom2 > 40)) return;
     const s2 = currentScale();
     const next = clamp((target * s2) / bottom2, MIN_SCALE, MAX_SCALE);
     if (Math.abs(next - s2) > 0.008) {
+      lastHomeBaseScale = next;
       document.documentElement.style.setProperty("--ui-scale", next.toFixed(4));
     }
   });

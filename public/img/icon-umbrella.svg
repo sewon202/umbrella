@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Umbrella">
+  <rect width="128" height="128" rx="28" fill="#F0FAFD"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- canopy -->
+    <path d="M28 62c0-24 16-40 36-40s36 16 36 40H28z" fill="#009BCB"/>
+    <path d="M46 62c2-14 8-24 18-24s16 10 18 24" stroke="#E6F6FB" stroke-width="2.5" opacity="0.55"/>
+    <path d="M64 22v40" stroke="#007AA3" stroke-width="3"/>
+    <!-- shaft + handle -->
+    <path d="M64 62v30" stroke="#007AA3" stroke-width="4"/>
+    <path d="M64 92c0 8 6 14 14 14" stroke="#007AA3" stroke-width="4"/>
+  </g>
+</svg>
