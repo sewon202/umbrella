@@ -26,7 +26,7 @@ import {
   summarizeSlots,
   plannedSlotDetail,
 } from "/js/map-view.js";
-import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=63";
+import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=64";
 import {
   isRentDoorClosed,
   isReturnDetected,
@@ -234,6 +234,8 @@ function inferNavDir(fromId, toId) {
   if (toRise && !fromRise) return "rise";
   if (fromRise && !toRise) return "sink";
   if (fromRise && toRise) return "fade";
+  // 반납 완료 → 홈: 설정→홈과 같은 탭 stagger
+  if (toId === "v-home" && fromId === "v-return-done") return "tab-left";
   const tabFrom = TAB_ORDER[fromId];
   const tabTo = TAB_ORDER[toId];
   // 하단 탭(홈↔설정): 토스식 짧은 슬라이드
@@ -317,7 +319,8 @@ function applyShowChrome(id, { tab, immersiveMode } = {}) {
 function finishShow(id) {
   const immersive = id === "v-qr" || id === "v-code" || id === "v-map";
   if (!immersive) window.scrollTo(0, 0);
-  // 전환 페인트 이후로 미뤄 버벅임 완화
+  // QR/코드/지도: 배율 재계산 생략 — 뷰포트·키보드와 겹치면 줌처럼 보임
+  if (immersive) return;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => updateUiScale({ force: true }));
   });
@@ -1084,17 +1087,8 @@ async function openCodeEntry() {
   closeQrCamera();
   $("codeErr").textContent = "";
   $("codeInput").value = "";
-  // 전환·레이아웃이 끝난 뒤 포커스 — 중장 포커스로 iOS 확대/축소처럼 보이던 문제 방지
-  await show("v-code");
-  const input = $("codeInput");
-  if (!input) return;
-  requestAnimationFrame(() => {
-    try {
-      input.focus({ preventScroll: true });
-    } catch (_) {
-      input.focus();
-    }
-  });
+  // instant: 페이드·자동포커스 없이 전환 — iOS 줌인/줌아웃 느낌 방지
+  await show("v-code", { instant: true });
 }
 
 function submitCodeEntry() {
@@ -1311,8 +1305,14 @@ $("qrTorch").onclick = async () => {
   if (!ok) showQrToast("이 기기에서는 라이트를 켤 수 없어요");
 };
 
-$("codeBack").onclick = () => goTab("qr");
-$("codeToQr").onclick = () => goTab("qr");
+$("codeBack").onclick = () => {
+  show("v-qr", { tab: "qr", instant: true });
+  openQrCamera();
+};
+$("codeToQr").onclick = () => {
+  show("v-qr", { tab: "qr", instant: true });
+  openQrCamera();
+};
 $("codeSubmit").onclick = submitCodeEntry;
 $("codeInput").onkeydown = (e) => {
   if (e.key === "Enter") submitCodeEntry();

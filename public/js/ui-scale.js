@@ -132,6 +132,16 @@ export function updateUiScale({ force = false } = {}) {
   }
 
   syncAppHeight({ force });
+
+  // QR/코드/지도 풀스크린: 배율 고정 (전환·키보드 시 확대/축소감 방지)
+  if (
+    document.body.classList.contains("qr-open") ||
+    document.body.classList.contains("code-open") ||
+    document.body.classList.contains("map-open")
+  ) {
+    return;
+  }
+
   const target = contentTargetY();
   if (!target) return;
 
