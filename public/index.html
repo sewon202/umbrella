@@ -29,7 +29,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=90">
+<link rel="stylesheet" href="/css/app.css?v=95">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -284,21 +284,99 @@
     </div>
     <div class="sheet settings-card vt-stagger" data-stagger="2">
       <button type="button" class="settings-action" id="settingsPayment">
-        <span>결제수단 등록</span>
-        <span class="settings-chevron" aria-hidden="true">›</span>
+        <span>결제수단</span>
+        <span class="settings-pay-side">
+          <strong id="setPayState" class="settings-verify-state">미등록</strong>
+          <span class="settings-chevron" aria-hidden="true">›</span>
+        </span>
       </button>
     </div>
     <div class="sheet settings-card vt-stagger" data-stagger="3">
-      <button type="button" class="settings-action" id="settingsVerify">
-        <span>재학생 인증</span>
-        <span class="settings-chevron" aria-hidden="true">›</span>
-      </button>
+      <div class="settings-verify-row">
+        <button type="button" class="settings-verify-main" id="settingsVerify">재학생 인증</button>
+        <span class="settings-verify-side">
+          <button type="button" class="verify-again" id="verifyAgain" hidden>재인증</button>
+          <strong id="setVerifyState" class="settings-verify-state">미인증</strong>
+        </span>
+      </div>
+      <form id="verifyForm" class="verify-form" hidden>
+        <p class="verify-note">유세인트 통합 로그인 비밀번호로 이 학번이 숭실대 계정인지 확인해요. 비밀번호는 저장하지 않고, 인증 여부만 회원 정보에 남겨요.</p>
+        <label class="field-label" for="verifyPw">유세인트 비밀번호</label>
+        <input id="verifyPw" type="password" autocomplete="off" placeholder="비밀번호">
+        <p class="err" id="verifyErr"></p>
+        <button class="btn" id="verifySubmit" type="submit">인증하기</button>
+      </form>
     </div>
   </div>
   <div class="stack-gap vt-stagger" data-stagger="4">
     <button class="btn ghost" id="settingsLogout" type="button">로그아웃</button>
   </div>
   <div class="settings-toast" id="settingsToast" hidden role="status" aria-live="polite">추후 개발 예정이에요.</div>
+</section>
+
+<section class="view" id="v-pay">
+  <div class="top-nav vt-stagger" data-stagger="0">
+    <button type="button" class="nav-back" id="payBack">← 설정</button>
+  </div>
+  <div class="vt-stagger" data-stagger="1">
+    <p class="pg-kicker">UMBRELLA PAY</p>
+    <h1 class="pg-title">결제수단</h1>
+    <p class="pg-lead">연체료 모의 결제에 쓸 카드예요. 승인이나 실제 청구는 없어요.</p>
+  </div>
+  <div class="pg-card vt-stagger" data-stagger="2" aria-hidden="true">
+    <div class="pg-card-top">
+      <span class="pg-word">UMBRELLA</span>
+      <span class="pg-pill">MOCK</span>
+    </div>
+    <div class="pg-chip" aria-hidden="true"></div>
+    <p class="pg-pan" id="payCardPan">••••&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;••••</p>
+    <div class="pg-card-bot">
+      <div>
+        <span class="pg-meta">CARD</span>
+        <strong id="payCardBrand">카드 이름</strong>
+      </div>
+      <div>
+        <span class="pg-meta">EXPIRES</span>
+        <strong id="payCardExp">MM/YY</strong>
+      </div>
+      <div>
+        <span class="pg-meta">NAME</span>
+        <strong id="payCardName">학생</strong>
+      </div>
+    </div>
+  </div>
+  <form id="payForm" class="pg-form vt-stagger" data-stagger="3">
+    <div class="pg-field">
+      <span id="payIssuerLabel">카드사</span>
+      <div class="pg-issuers" id="payIssuers" role="listbox" aria-labelledby="payIssuerLabel"></div>
+      <input id="payIssuer" type="hidden" value="">
+    </div>
+    <label class="pg-field">
+      <span>카드 별명</span>
+      <input id="payNickname" type="text" maxlength="20" autocomplete="off" placeholder="예: 생활비">
+    </label>
+    <label class="pg-field">
+      <span>카드 번호</span>
+      <input id="payNumber" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="1234 5678 9012 3456">
+    </label>
+    <div class="pg-row">
+      <label class="pg-field">
+        <span>유효기간</span>
+        <input id="payExpiry" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/YY">
+      </label>
+      <label class="pg-field">
+        <span>CVC</span>
+        <input id="payCvc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
+      </label>
+    </div>
+    <label class="pg-field">
+      <span>비밀번호 끝 2자리</span>
+      <input id="payPw2" type="password" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="••">
+    </label>
+    <p class="err" id="payErr"></p>
+    <button class="pg-pay-btn" id="paySubmit" type="submit">등록하기</button>
+    <p class="pg-fine">CVC와 비밀번호는 카드에 표시하지 않아요.</p>
+  </form>
 </section>
 
 <section class="view" id="v-return-done">
@@ -325,6 +403,10 @@
     <div class="return-done-row">
       <span>반납 시각</span>
       <strong id="returnDoneAt">-</strong>
+    </div>
+    <div class="return-done-row" id="returnDoneFeeRow" hidden>
+      <span>추가요금</span>
+      <strong id="returnDoneFee">-</strong>
     </div>
   </div>
   <div class="stack-gap">
@@ -433,7 +515,74 @@
   </button>
 </nav>
 
+<div id="payOverlay" class="pay-overlay" hidden>
+  <div class="pay-checkout" role="dialog" aria-modal="true" aria-labelledby="payTitle">
+    <div class="pg-checkout-top">
+      <span class="pg-kicker">UMBRELLA PAY</span>
+      <span class="pg-pill pg-pill-light">모의 결제</span>
+    </div>
+    <p class="pg-merchant">숭실 우산 대여 · 연체료</p>
+    <h2 id="payTitle" class="pg-amount">0원</h2>
+    <p class="pg-sub">반납 기한이 지나 추가요금이 생겼어요. 이 화면의 결제는 실제로 청구되지 않아요.</p>
+    <div class="pg-card pg-card-compact" aria-hidden="true">
+      <div class="pg-card-top">
+        <span class="pg-word">UMBRELLA</span>
+        <span class="pg-pill">MOCK</span>
+      </div>
+      <div class="pg-chip" aria-hidden="true"></div>
+      <p class="pg-pan" id="chargePan">••••&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;••••</p>
+      <div class="pg-card-bot">
+      <div>
+        <span class="pg-meta">CARD</span>
+        <strong id="chargeBrand">카드 이름</strong>
+      </div>
+      <div>
+        <span class="pg-meta">EXPIRES</span>
+        <strong id="chargeExp">MM/YY</strong>
+      </div>
+      <div>
+        <span class="pg-meta">NAME</span>
+        <strong id="chargeName">학생</strong>
+      </div>
+      </div>
+    </div>
+    <p class="pg-method" id="payMethodLine" hidden></p>
+    <form id="payOverlayForm" class="pg-form pg-form-tight" hidden>
+      <div class="pg-field">
+        <span id="payOverlayIssuerLabel">카드사</span>
+        <div class="pg-issuers" id="payOverlayIssuers" role="listbox" aria-labelledby="payOverlayIssuerLabel"></div>
+        <input id="payOverlayIssuer" type="hidden" value="">
+      </div>
+      <label class="pg-field">
+        <span>카드 별명</span>
+        <input id="payOverlayNickname" type="text" maxlength="20" autocomplete="off" placeholder="예: 생활비">
+      </label>
+      <label class="pg-field">
+        <span>카드 번호</span>
+        <input id="payOverlayNumber" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="1234 5678 9012 3456">
+      </label>
+      <div class="pg-row">
+        <label class="pg-field">
+          <span>유효기간</span>
+          <input id="payOverlayExpiry" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/YY">
+        </label>
+        <label class="pg-field">
+          <span>CVC</span>
+          <input id="payOverlayCvc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
+        </label>
+      </div>
+      <label class="pg-field">
+        <span>비밀번호 끝 2자리</span>
+        <input id="payOverlayPw2" type="password" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="••">
+      </label>
+    </form>
+    <p class="err" id="payOverlayErr"></p>
+    <button class="pg-pay-btn" id="payOverlaySubmit" type="button">결제하기</button>
+    <p class="pg-fine">등록된 카드 표시만 사용해요. 결제사로 전송하지 않아요.</p>
+  </div>
+</div>
+
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=100"></script>
+<script type="module" src="/js/app.js?v=109"></script>
 </body>
 </html>

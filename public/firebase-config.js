@@ -1,4 +1,4 @@
-// Umbrella (umbrella-c8cf0) — Hosting + Auth + Firestore only (Functions 없음)
+// Umbrella (umbrella-c8cf0) — Hosting + Auth + Firestore + 재학생 인증 함수
 window.UMBRELLA = {
   backend: "firebase",
   cost: {
@@ -24,5 +24,6 @@ window.UMBRELLA = {
   // device 비밀번호는 공개 설정에 두지 않음.
   // - 브리지: device-secrets.local.js 또는 DEVICE_PASSWORD
   // - admin/device.html: 로그인 시 입력
-  deviceEmail: "device@umbrella.local"
+  deviceEmail: "device@umbrella.local",
+  verifyStudentUrl: "https://asia-northeast3-umbrella-c8cf0.cloudfunctions.net/verifyStudent"
 };

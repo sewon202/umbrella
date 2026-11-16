@@ -2,6 +2,7 @@
  * Umbrella 로컬 서버 (Express + node:sqlite)
  * - 프론트/브리지가 쓰는 /api 와 동일 인터페이스를 Firebase 어댑터와 맞춘다.
  */
+const { verifySsuStudent } = require("./lib/ssu-verify.cjs");
 const express = require("express");
 const crypto = require("crypto");
 const path = require("path");
@@ -67,6 +68,16 @@ for (const sql of [
   "ALTER TABLE umbrellas ADD COLUMN rented_at INTEGER",
   "ALTER TABLE rentals ADD COLUMN station TEXT",
   "ALTER TABLE rentals ADD COLUMN slot INTEGER",
+  "ALTER TABLE students ADD COLUMN lms_verified INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE students ADD COLUMN lms_verified_at INTEGER",
+  "ALTER TABLE students ADD COLUMN payment_brand TEXT",
+  "ALTER TABLE students ADD COLUMN payment_nickname TEXT",
+  "ALTER TABLE students ADD COLUMN payment_number TEXT",
+  "ALTER TABLE students ADD COLUMN payment_expiry TEXT",
+  "ALTER TABLE students ADD COLUMN payment_cvc TEXT",
+  "ALTER TABLE students ADD COLUMN payment_pw2 TEXT",
+  "ALTER TABLE students ADD COLUMN payment_last4 TEXT",
+  "ALTER TABLE students ADD COLUMN payment_registered_at INTEGER",
 ]) {
   try { db.exec(sql); } catch (_) {}
 }
@@ -109,7 +120,18 @@ const q = {
     "INSERT INTO students(student_id, name, pw_hash, created_at) VALUES (?,?,?,?)"
   ),
   getStudent: db.prepare("SELECT * FROM students WHERE student_id = ?"),
-  listStudents: db.prepare("SELECT student_id, name, created_at FROM students ORDER BY created_at DESC"),
+  listStudents: db.prepare(
+    "SELECT student_id, name, created_at, lms_verified, lms_verified_at, payment_last4 FROM students ORDER BY created_at DESC"
+  ),
+  markStudentVerified: db.prepare(
+    "UPDATE students SET lms_verified = 1, lms_verified_at = ? WHERE student_id = ?"
+  ),
+  setPaymentMethod: db.prepare(
+    `UPDATE students
+     SET payment_brand = ?, payment_nickname = ?, payment_number = ?, payment_expiry = ?, payment_cvc = ?,
+         payment_pw2 = ?, payment_last4 = ?, payment_registered_at = ?
+     WHERE student_id = ?`
+  ),
   activeRental: db.prepare(
     "SELECT * FROM rentals WHERE student_id = ? AND returned_at IS NULL ORDER BY id DESC LIMIT 1"
   ),
@@ -192,6 +214,53 @@ const assertSlot = (res, slot) => {
 };
 const rentalView = (r) =>
   r && { rentalId: r.id, station: r.station, slot: r.slot, rented_at: r.rented_at, due_at: r.due_at };
+const CARD_ISSUERS = [
+  "신한카드", "삼성카드", "현대카드", "KB국민카드", "롯데카드", "우리카드", "하나카드",
+  "NH농협카드", "BC카드", "씨티카드", "카카오뱅크", "토스뱅크", "케이뱅크", "IBK기업은행",
+  "수협은행", "새마을금고", "우체국", "광주은행", "전북은행", "제주은행",
+];
+function normalizePayment(body) {
+  const issuer = String((body && (body.issuer || body.brand)) || "").trim();
+  const nickname = String((body && body.nickname) || "").trim();
+  const number = String((body && body.number) || "").replace(/\D/g, "");
+  const expiry = String((body && body.expiry) || "").replace(/\D/g, "");
+  const cvc = String((body && body.cvc) || "").replace(/\D/g, "");
+  const pw2 = String((body && body.pw2) || "").replace(/\D/g, "");
+  if (!CARD_ISSUERS.includes(issuer)) return { error: "카드사를 목록에서 선택해 주세요." };
+  if (nickname.length > 20) return { error: "카드 별명은 20자 안으로 입력해 주세요." };
+  if (!/^\d{16}$/.test(number)) return { error: "카드 번호 16자리를 입력해 주세요." };
+  if (!/^(0[1-9]|1[0-2])\d{2}$/.test(expiry)) return { error: "유효기간을 MM/YY로 입력해 주세요." };
+  if (!/^\d{3,4}$/.test(cvc)) return { error: "CVC 3~4자리를 입력해 주세요." };
+  if (!/^\d{2}$/.test(pw2)) return { error: "비밀번호 끝 2자리를 입력해 주세요." };
+  return {
+    value: {
+      issuer,
+      nickname,
+      brand: issuer,
+      number,
+      expiry,
+      cvc,
+      pw2,
+      last4: number.slice(-4),
+      registeredAt: Date.now(),
+    },
+  };
+}
+const paymentView = (u) => (
+  u && /^\d{16}$/.test(u.payment_number || "") && CARD_ISSUERS.includes(u.payment_brand || "")
+    ? {
+      issuer: u.payment_brand,
+      nickname: u.payment_nickname || "",
+      brand: u.payment_brand,
+      number: u.payment_number,
+      expiry: u.payment_expiry,
+      cvc: u.payment_cvc,
+      pw2: u.payment_pw2,
+      last4: u.payment_last4 || u.payment_number.slice(-4),
+      registeredAt: u.payment_registered_at || null,
+    }
+    : null
+);
 
 function requireDeviceKey(req, res, next) {
   const key = req.headers["x-device-key"] || req.query.key;
@@ -217,13 +286,48 @@ app.post("/api/signup", (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+const verifyAttempts = new Map();
+app.post("/api/verify-student", async (req, res) => {
+  const studentId = String((req.body && req.body.studentId) || "").trim();
+  const password = String((req.body && req.body.password) || "");
+  const now = Date.now();
+  const prev = verifyAttempts.get(studentId) || [];
+  const recent = prev.filter((t) => now - t < 10 * 60 * 1000);
+  if (recent.length >= 5) {
+    return bad(res, "시도가 너무 많아요. 10분 뒤에 다시 해 주세요.", 429);
+  }
+  recent.push(now);
+  verifyAttempts.set(studentId, recent);
+  try {
+    const result = await verifySsuStudent({ studentId, password });
+    if (!result.ok) return bad(res, result.error, 401);
+    const verifiedAt = Date.now();
+    if (q.getStudent.get(result.studentId)) q.markStudentVerified.run(verifiedAt, result.studentId);
+    res.json({
+      ok: true,
+      studentId: result.studentId,
+      verifiedAt,
+      lmsVerified: true,
+    });
+  } catch (_) {
+    bad(res, "재학생 인증 중 오류가 발생했어요.", 500);
+  }
+});
+
 app.post("/api/login", (req, res) => {
   const { studentId, password } = req.body || {};
   const u = q.getStudent.get(studentId || "");
   if (!u || !checkPw(password || "", u.pw_hash)) return bad(res, "학번 또는 비밀번호가 맞지 않아요.", 401);
   const token = crypto.randomBytes(24).toString("hex");
   sessions.set(token, { id: u.student_id, exp: Date.now() + 24 * 3600 * 1000 });
-  res.json({ token, name: u.name, activeRental: rentalView(q.activeRental.get(u.student_id)) || null });
+  res.json({
+    token,
+    name: u.name,
+    lmsVerified: !!u.lms_verified,
+    lmsVerifiedAt: u.lms_verified_at || null,
+    paymentMethod: paymentView(u),
+    activeRental: rentalView(q.activeRental.get(u.student_id)) || null,
+  });
 });
 
 app.get("/api/me", (req, res) => {
@@ -232,7 +336,26 @@ app.get("/api/me", (req, res) => {
   if (!s || s.exp < Date.now()) return bad(res, "로그인이 필요해요.", 401);
   const u = q.getStudent.get(s.id);
   if (!u) return bad(res, "사용자를 찾을 수 없어요.", 404);
-  res.json({ studentId: u.student_id, name: u.name });
+  res.json({
+    studentId: u.student_id,
+    name: u.name,
+    lmsVerified: !!u.lms_verified,
+    lmsVerifiedAt: u.lms_verified_at || null,
+    paymentMethod: paymentView(u),
+  });
+});
+
+app.post("/api/payment-method", (req, res) => {
+  const t = (req.headers.authorization || "").replace("Bearer ", "");
+  const s = sessions.get(t);
+  if (!s || s.exp < Date.now()) return bad(res, "로그인이 필요해요.", 401);
+  const parsed = normalizePayment(req.body || {});
+  if (parsed.error) return bad(res, parsed.error);
+  const pay = parsed.value;
+  q.setPaymentMethod.run(
+    pay.brand, pay.nickname, pay.number, pay.expiry, pay.cvc, pay.pw2, pay.last4, pay.registeredAt, s.id
+  );
+  res.json({ ok: true, paymentMethod: pay });
 });
 
 app.get("/api/students/:id/rental", (req, res) => {
@@ -316,6 +439,8 @@ app.post("/api/open", (req, res) => {
 app.get("/api/admin/students", (_req, res) => {
   const students = q.listStudents.all().map((s) => ({
     studentId: s.student_id, name: s.name, created_at: s.created_at,
+    lmsVerified: !!s.lms_verified, lmsVerifiedAt: s.lms_verified_at || null,
+    paymentRegistered: !!s.payment_last4,
     activeRental: rentalView(q.activeRental.get(s.student_id)) || null,
   }));
   res.json({ students });

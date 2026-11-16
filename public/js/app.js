@@ -10,13 +10,17 @@ import {
   rentUmbrella,
   returnUmbrella,
   watchDeviceEvents,
+  getAuthHeaders,
   friendlyError,
   MAX_HW_SLOT,
   TOTAL_SLOTS,
   RENT_LIMIT_MS,
   overdueFeeWon,
+  savePaymentMethod,
+  paymentMethodLabel,
+  CARD_ISSUERS,
   STATIONS,
-} from "/js/backend.js?v=100";
+} from "/js/backend.js?v=109";
 import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=49";
 import {
   initCampusMap,
@@ -45,6 +49,9 @@ function applyUser(res) {
     name: res.name,
     uid: res.uid,
     activeRental: res.activeRental || null,
+    lmsVerified: res.lmsVerified === true,
+    lmsVerifiedAt: res.lmsVerifiedAt || null,
+    paymentMethod: res.paymentMethod || null,
   };
 }
 
@@ -200,6 +207,7 @@ const NAV_DEPTH = {
   "v-signup": 1,
   "v-home": 10,
   "v-settings": 10,
+  "v-pay": 12,
   "v-qr": 20,
   "v-map": 20,
   "v-code": 21,
@@ -237,6 +245,9 @@ function inferNavDir(fromId, toId) {
   if (toRise && !fromRise) return "rise";
   if (fromRise && !toRise) return "sink";
   if (fromRise && toRise) return "fade";
+  // 설정 → 결제수단: 홈·설정과 같은 가로 stagger
+  if (fromId === "v-settings" && toId === "v-pay") return "tab-right";
+  if (fromId === "v-pay" && (toId === "v-settings" || toId === "v-home")) return "tab-left";
   // 반납 완료 → 홈: 설정→홈과 같은 탭 stagger
   if (toId === "v-home" && fromId === "v-return-done") return "tab-left";
   const tabFrom = TAB_ORDER[fromId];
@@ -430,6 +441,8 @@ function syncUserChrome() {
   $("homeWho").textContent = `${state.user.name}님, 안녕하세요`;
   $("setName").textContent = state.user.name;
   $("setSid").textContent = state.user.id;
+  renderVerifyState();
+  renderPayState();
   $("placeName").textContent = STATION_NAMES[state.station] || state.station;
   $("placeCode").textContent = `대여소 코드 ${STATION_QR[state.station] || state.station}`;
 
@@ -807,11 +820,17 @@ async function go() {
       returnWaitResolve = null;
       if (how === "sensor" || how === "manual") {
         setMsg("");
+        const returnedAt = Date.now();
+        const fee = returnOverdueFee(rentalSnap, returnedAt);
+        let paid = null;
+        if (fee > 0) paid = await askOverduePayment(fee);
         showReturnDone({
           rental: rentalSnap,
           returnStation: state.station,
           returnSlot: slot,
-          returnedAt: Date.now(),
+          returnedAt,
+          fee: paid ? fee : 0,
+          paymentMethod: paid,
         });
       }
       returnUiDone = true;
@@ -861,7 +880,7 @@ async function go() {
   }
 }
 
-function showReturnDone({ rental, returnStation, returnSlot, returnedAt }) {
+function showReturnDone({ rental, returnStation, returnSlot, returnedAt, fee, paymentMethod }) {
   const rentedAt = rental && rental.rented_at ? Number(rental.rented_at) : null;
   const endedAt = returnedAt || Date.now();
   const usedMs = rentedAt ? Math.max(0, endedAt - rentedAt) : null;
@@ -874,8 +893,208 @@ function showReturnDone({ rental, returnStation, returnSlot, returnedAt }) {
   $("returnDoneAt").textContent = new Date(endedAt).toLocaleString("ko-KR", {
     month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
   });
+  const feeRow = $("returnDoneFeeRow");
+  if (feeRow) {
+    if (fee > 0) {
+      feeRow.hidden = false;
+      const label = paymentMethodLabel(paymentMethod);
+      $("returnDoneFee").textContent = label
+        ? `${fee.toLocaleString("ko-KR")}원 · ${label} 모의 결제`
+        : `${fee.toLocaleString("ko-KR")}원 · 모의 결제`;
+    } else {
+      feeRow.hidden = true;
+      $("returnDoneFee").textContent = "";
+    }
+  }
 
   show("v-return-done");
+}
+
+function returnOverdueFee(rental, returnedAt) {
+  if (!rental) return 0;
+  const due = Number(rental.due_at) || (Number(rental.rented_at) + RENT_LIMIT_MS);
+  if (!due) return 0;
+  return overdueFeeWon(returnedAt - due);
+}
+
+function digitsOnly(value, max) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return max ? digits.slice(0, max) : digits;
+}
+
+function formatCardNumber(value) {
+  return digitsOnly(value, 16).replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+}
+
+function formatExpiry(value) {
+  const digits = digitsOnly(value, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+}
+
+function formatPanGroups(value) {
+  const digits = digitsOnly(value, 16);
+  return [0, 1, 2, 3].map((i) => (digits.slice(i * 4, i * 4 + 4) + "••••").slice(0, 4)).join("  ");
+}
+
+function formatExpiryLabel(value) {
+  const digits = digitsOnly(value, 4);
+  if (digits.length < 2) return "MM/YY";
+  return `${digits.slice(0, 2)}/${digits.slice(2) || "YY"}`;
+}
+
+function readPayFields(prefix) {
+  return {
+    issuer: ($(`${prefix}Issuer`) && $(`${prefix}Issuer`).value) || "",
+    nickname: ($(`${prefix}Nickname`) && $(`${prefix}Nickname`).value.trim()) || "",
+    number: digitsOnly($(`${prefix}Number`).value, 16),
+    expiry: digitsOnly($(`${prefix}Expiry`).value, 4),
+    cvc: digitsOnly($(`${prefix}Cvc`).value, 4),
+    pw2: digitsOnly($(`${prefix}Pw2`).value, 2),
+    registeredAt: Date.now(),
+  };
+}
+
+function selectIssuer(prefix, name, { scroll } = {}) {
+  const picked = CARD_ISSUERS.includes(name) ? name : CARD_ISSUERS[0];
+  const hidden = $(`${prefix}Issuer`);
+  if (hidden) hidden.value = picked;
+  const box = $(`${prefix}Issuers`);
+  if (!box) return picked;
+  box.querySelectorAll(".pg-issuer").forEach((el) => {
+    const on = el.dataset.issuer === picked;
+    el.classList.toggle("on", on);
+    el.setAttribute("aria-selected", on ? "true" : "false");
+    if (on) {
+      el.scrollIntoView({ inline: "center", block: "nearest", behavior: scroll ? "smooth" : "auto" });
+    }
+  });
+  return picked;
+}
+
+function mountIssuers(prefix) {
+  const box = $(`${prefix}Issuers`);
+  if (!box || box.childElementCount) return;
+  box.innerHTML = CARD_ISSUERS.map((name) =>
+    `<button type="button" class="pg-issuer" data-issuer="${name}" role="option">${name}</button>`
+  ).join("");
+  box.onclick = (event) => {
+    const btn = event.target.closest(".pg-issuer");
+    if (!btn) return;
+    selectIssuer(prefix, btn.dataset.issuer, { scroll: true });
+    paintPayCard(prefix === "pay" ? "payCard" : "charge", readPayFields(prefix));
+  };
+  selectIssuer(prefix, CARD_ISSUERS[0]);
+}
+
+function fillPayFields(prefix, pay) {
+  $(`${prefix}Nickname`).value = pay ? (pay.nickname || "") : "";
+  $(`${prefix}Number`).value = pay ? formatCardNumber(pay.number) : "";
+  $(`${prefix}Expiry`).value = pay ? formatExpiry(pay.expiry) : "";
+  $(`${prefix}Cvc`).value = pay ? pay.cvc : "";
+  $(`${prefix}Pw2`).value = pay ? pay.pw2 : "";
+  selectIssuer(prefix, pay && (pay.issuer || pay.brand));
+}
+
+function paintPayCard(prefix, fields = {}) {
+  const pan = $(`${prefix}Pan`);
+  const brandEl = $(`${prefix}Brand`);
+  const nameEl = $(`${prefix}Name`);
+  const expEl = $(`${prefix}Exp`);
+  const nickname = String(fields.nickname || "").trim();
+  if (pan) pan.textContent = formatPanGroups(fields.number);
+  if (brandEl) brandEl.textContent = fields.issuer || fields.brand || "카드사";
+  if (nameEl) nameEl.textContent = nickname || (state.user && state.user.name) || "학생";
+  if (expEl) expEl.textContent = formatExpiryLabel(fields.expiry);
+}
+
+function renderPayState() {
+  const el = $("setPayState");
+  const label = paymentMethodLabel(state.user && state.user.paymentMethod);
+  if (el) {
+    el.textContent = label || "미등록";
+    el.classList.toggle("ok", !!label);
+  }
+  const btn = $("paySubmit");
+  if (btn && !btn.disabled) btn.textContent = label ? "변경하기" : "등록하기";
+}
+
+function openPayMethod() {
+  if (!state.user) return;
+  fillPayFields("pay", state.user.paymentMethod);
+  $("payErr").textContent = "";
+  paintPayCard("payCard", readPayFields("pay"));
+  renderPayState();
+  show("v-pay");
+}
+
+function bindPayTyping(prefix, cardPrefix) {
+  const number = $(`${prefix}Number`);
+  const expiry = $(`${prefix}Expiry`);
+  const cvc = $(`${prefix}Cvc`);
+  const pw2 = $(`${prefix}Pw2`);
+  const nickname = $(`${prefix}Nickname`);
+  const paint = () => paintPayCard(cardPrefix, readPayFields(prefix));
+  number.oninput = () => {
+    number.value = formatCardNumber(number.value);
+    paint();
+  };
+  expiry.oninput = () => {
+    expiry.value = formatExpiry(expiry.value);
+    paint();
+  };
+  if (nickname) nickname.oninput = paint;
+  cvc.oninput = () => { cvc.value = digitsOnly(cvc.value, 4); };
+  pw2.oninput = () => { pw2.value = digitsOnly(pw2.value, 2); };
+}
+
+function askOverduePayment(fee) {
+  const overlay = $("payOverlay");
+  const form = $("payOverlayForm");
+  const err = $("payOverlayErr");
+  const btn = $("payOverlaySubmit");
+  const amount = `${fee.toLocaleString("ko-KR")}원`;
+  $("payTitle").textContent = amount;
+  err.textContent = "";
+  btn.disabled = false;
+  fillPayFields("payOverlay", null);
+
+  const paint = () => {
+    const saved = state.user && state.user.paymentMethod;
+    const has = !!paymentMethodLabel(saved);
+    const fields = has ? saved : readPayFields("payOverlay");
+    paintPayCard("charge", fields);
+    form.hidden = has;
+    btn.textContent = has ? `${amount} 결제하기` : "등록하고 결제하기";
+  };
+  paint();
+  bindPayTyping("payOverlay", "charge");
+  overlay.hidden = false;
+
+  return new Promise((resolve) => {
+    btn.onclick = async () => {
+      err.textContent = "";
+      btn.disabled = true;
+      try {
+        if (!paymentMethodLabel(state.user && state.user.paymentMethod)) {
+          const saved = await savePaymentMethod(readPayFields("payOverlay"));
+          state.user.paymentMethod = saved;
+          renderPayState();
+          paint();
+        }
+        btn.textContent = "결제 중…";
+        await wait(1100);
+        const paid = state.user.paymentMethod;
+        overlay.hidden = true;
+        btn.onclick = null;
+        resolve(paid);
+      } catch (ex) {
+        err.textContent = ex.message || "모의 결제에 실패했어요.";
+        btn.disabled = false;
+        paint();
+      }
+    };
+  });
 }
 
 function fmt(ms) {
@@ -1281,22 +1500,112 @@ $("pw").onkeydown = $("sid").onkeydown = (e) => { if (e.key === "Enter") login()
 $("joinBtn").onclick = signupSubmit;
 $("goSignup").onclick = (e) => { e.preventDefault(); showAuth("signup"); };
 $("goLogin").onclick = (e) => { e.preventDefault(); showAuth("login"); };
-let settingsToastTimer = 0;
-function showSettingsSoon() {
-  const t = $("settingsToast");
-  if (!t) return;
-  t.hidden = false;
-  t.textContent = "추후 개발 예정이에요.";
-  requestAnimationFrame(() => t.classList.add("show"));
-  if (settingsToastTimer) clearTimeout(settingsToastTimer);
-  settingsToastTimer = setTimeout(() => {
-    t.classList.remove("show");
-    setTimeout(() => { t.hidden = true; }, 220);
-    settingsToastTimer = 0;
-  }, 1800);
+$("settingsPayment").onclick = () => openPayMethod();
+$("payBack").onclick = () => show("v-settings", { tab: "settings" });
+bindPayTyping("pay", "payCard");
+mountIssuers("pay");
+mountIssuers("payOverlay");
+$("payForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const err = $("payErr");
+  const btn = $("paySubmit");
+  err.textContent = "";
+  if (!state.user) {
+    err.textContent = "로그인 후 등록해 주세요.";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "저장 중…";
+  try {
+    const saved = await savePaymentMethod(readPayFields("pay"));
+    state.user.paymentMethod = saved;
+    renderPayState();
+    show("v-settings", { tab: "settings" });
+    const t = $("settingsToast");
+    t.hidden = false;
+    t.textContent = "모의 결제수단을 저장했어요.";
+    requestAnimationFrame(() => t.classList.add("show"));
+    setTimeout(() => t.classList.remove("show"), 1800);
+  } catch (ex) {
+    err.textContent = ex.message || "결제수단을 저장하지 못했어요.";
+  } finally {
+    btn.disabled = false;
+    renderPayState();
+  }
+};
+
+function renderVerifyState() {
+  const el = $("setVerifyState");
+  const again = $("verifyAgain");
+  const submit = $("verifySubmit");
+  const verified = !!(state.user && state.user.lmsVerified);
+  if (el) {
+    el.textContent = verified ? "인증됨" : "미인증";
+    el.classList.toggle("ok", verified);
+  }
+  if (again) again.hidden = !verified;
+  if (submit && !submit.disabled) submit.textContent = "인증하기";
 }
-$("settingsPayment").onclick = showSettingsSoon;
-$("settingsVerify").onclick = showSettingsSoon;
+$("verifyAgain").onclick = () => {
+  const form = $("verifyForm");
+  if (!form) return;
+  form.hidden = false;
+  $("verifyPw").focus();
+};
+$("settingsVerify").onclick = () => {
+  const form = $("verifyForm");
+  if (!form) return;
+  form.hidden = !form.hidden;
+  if (!form.hidden) $("verifyPw").focus();
+};
+$("verifyForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const err = $("verifyErr");
+  const btn = $("verifySubmit");
+  err.textContent = "";
+  if (!state.user) {
+    err.textContent = "로그인 후 인증해 주세요.";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "확인 중…";
+  try {
+    const url = getMode() === "firebase"
+      ? (window.UMBRELLA && window.UMBRELLA.verifyStudentUrl)
+      : "/api/verify-student";
+    if (!url) throw new Error("재학생 인증 주소가 설정되지 않았어요.");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      },
+      body: JSON.stringify({
+        studentId: state.user.id,
+        password: $("verifyPw").value,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "재학생 인증에 실패했어요.");
+    }
+    state.user.lmsVerified = true;
+    state.user.lmsVerifiedAt = data.verifiedAt;
+    $("verifyPw").value = "";
+    $("verifyForm").hidden = true;
+    renderVerifyState();
+    const t = $("settingsToast");
+    t.hidden = false;
+    t.textContent = "재학생 인증이 완료됐어요.";
+    requestAnimationFrame(() => t.classList.add("show"));
+    setTimeout(() => t.classList.remove("show"), 1800);
+  } catch (ex) {
+    err.textContent = ex.message || "재학생 인증에 실패했어요.";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "인증하기";
+  }
+};
 $("settingsLogout").onclick = logout;
 
 $("tabHome").onclick = () => goTab("home");

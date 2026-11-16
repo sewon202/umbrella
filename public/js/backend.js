@@ -47,6 +47,62 @@ export function overdueFeeWon(overdueMs) {
   if (!(overdueMs > 0)) return 0;
   return Math.ceil(overdueMs / OVERDUE_FEE_UNIT_MS) * OVERDUE_FEE_WON;
 }
+
+export const CARD_ISSUERS = [
+  "신한카드",
+  "삼성카드",
+  "현대카드",
+  "KB국민카드",
+  "롯데카드",
+  "우리카드",
+  "하나카드",
+  "NH농협카드",
+  "BC카드",
+  "씨티카드",
+  "카카오뱅크",
+  "토스뱅크",
+  "케이뱅크",
+  "IBK기업은행",
+  "수협은행",
+  "새마을금고",
+  "우체국",
+  "광주은행",
+  "전북은행",
+  "제주은행",
+];
+
+export function paymentMethodView(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const issuer = String(raw.issuer || raw.brand || "").trim();
+  const nickname = String(raw.nickname || "").trim();
+  const number = String(raw.number || "").replace(/\D/g, "");
+  const expiry = String(raw.expiry || "").replace(/\D/g, "");
+  const cvc = String(raw.cvc || "").replace(/\D/g, "");
+  const pw2 = String(raw.pw2 || "").replace(/\D/g, "");
+  if (!CARD_ISSUERS.includes(issuer)) return null;
+  if (nickname.length > 20) return null;
+  if (!/^\d{16}$/.test(number)) return null;
+  if (!/^(0[1-9]|1[0-2])\d{2}$/.test(expiry)) return null;
+  if (!/^\d{3,4}$/.test(cvc)) return null;
+  if (!/^\d{2}$/.test(pw2)) return null;
+  return {
+    issuer,
+    nickname,
+    brand: issuer,
+    number,
+    expiry,
+    cvc,
+    pw2,
+    last4: number.slice(-4),
+    registeredAt: raw.registeredAt || null,
+  };
+}
+
+export function paymentMethodLabel(method) {
+  const pay = paymentMethodView(method);
+  if (!pay) return "";
+  return `${pay.nickname || pay.issuer} · ${pay.last4}`;
+}
 /** 새로고침 후 로그인 유지 (약 20분) */
 export const SESSION_MS = 20 * 60 * 1000;
 const DEVICE_KEY = "umbrella-device";
@@ -148,6 +204,9 @@ function createLocalBackend() {
       const user = {
         studentId, name: r.name, uid: studentId,
         activeRental: r.activeRental || null,
+        lmsVerified: r.lmsVerified === true,
+        lmsVerifiedAt: r.lmsVerifiedAt || null,
+        paymentMethod: paymentMethodView(r.paymentMethod),
       };
       localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({
         token: r.token, ...user, exp: Date.now() + SESSION_MS,
@@ -163,13 +222,19 @@ function createLocalBackend() {
           localStorage.removeItem(LOCAL_SESSION_KEY);
           return null;
         }
-        await api("GET", "/api/me", null, { Authorization: `Bearer ${s.token}` });
+        const me = await api("GET", "/api/me", null, { Authorization: `Bearer ${s.token}` });
         let activeRental = null;
         try {
           activeRental = (await api("GET", `/api/students/${s.studentId}/rental`)).activeRental || null;
         } catch (_) {}
         return {
-          studentId: s.studentId, name: s.name, uid: s.uid || s.studentId, activeRental,
+          studentId: s.studentId,
+          name: me.name || s.name,
+          uid: s.uid || s.studentId,
+          activeRental,
+          lmsVerified: me.lmsVerified === true,
+          lmsVerifiedAt: me.lmsVerifiedAt || null,
+          paymentMethod: paymentMethodView(me.paymentMethod),
         };
       } catch (_) {
         localStorage.removeItem(LOCAL_SESSION_KEY);
@@ -197,6 +262,22 @@ function createLocalBackend() {
     async openDoor({ station, slot, studentId, action = "open" }) {
       assertSlot(slot);
       return api("POST", "/api/open", { station, slot, studentId, action });
+    },
+    async savePaymentMethod(method) {
+      const pay = paymentMethodView(method);
+      if (!pay) throw new Error("카드 정보를 다시 확인해 주세요.");
+      const raw = localStorage.getItem(LOCAL_SESSION_KEY);
+      const s = raw ? JSON.parse(raw) : null;
+      if (!s || !s.token) throw new Error("로그인이 필요해요.");
+      const saved = await api("POST", "/api/payment-method", {
+        issuer: pay.issuer,
+        nickname: pay.nickname,
+        number: pay.number,
+        expiry: pay.expiry,
+        cvc: pay.cvc,
+        pw2: pay.pw2,
+      }, { Authorization: `Bearer ${s.token}` });
+      return paymentMethodView(saved.paymentMethod);
     },
     async listStudents() { return (await api("GET", "/api/admin/students")).students; },
     async listAllUmbrellas() { return (await api("GET", "/api/admin/umbrellas")).umbrellas; },
@@ -272,6 +353,9 @@ function createFirebaseBackend() {
       name: data.name || user.displayName || "학생",
       uid: user.uid,
       activeRental: data.activeRental || null,
+      lmsVerified: data.lmsVerified === true,
+      lmsVerifiedAt: data.lmsVerifiedAt || null,
+      paymentMethod: paymentMethodView(data.paymentMethod),
     };
   }
 
@@ -305,6 +389,7 @@ function createFirebaseBackend() {
       await updateProfile(cred.user, { displayName: name });
       await setDoc(doc(db, "students", cred.user.uid), {
         studentId, name, created_at: Date.now(), activeRental: null,
+        lmsVerified: false, lmsVerifiedAt: null,
       });
       await signOut(auth); // 가입 직후 자동 로그인 상태 해제 → 로그인 화면과 일치
       return { ok: true };
@@ -459,6 +544,17 @@ function createFirebaseBackend() {
         done: 0, created_at: Date.now(), done_at: null,
       });
       return { ok: true, id: ref.id, station, slot, action };
+    },
+
+    async savePaymentMethod(method) {
+      const pay = paymentMethodView({ ...method, registeredAt: Date.now() });
+      if (!pay) throw new Error("카드 정보를 다시 확인해 주세요.");
+      const user = requireUser();
+      await updateDoc(doc(db, "students", user.uid), {
+        paymentMethod: pay,
+        updated_at: pay.registeredAt,
+      });
+      return pay;
     },
 
     async listStudents() {
@@ -645,6 +741,13 @@ function createFirebaseBackend() {
     async health() {
       return { ok: true, backend: "firebase", maxHwSlot: MAX_HW_SLOT, projectId: fb.projectId };
     },
+
+    async getAuthHeaders() {
+      const user = auth.currentUser;
+      if (!user) return {};
+      const token = await user.getIdToken();
+      return { Authorization: `Bearer ${token}` };
+    },
   };
 }
 
@@ -662,6 +765,7 @@ export const rentUmbrella = (p) => backend.rent(p);
 export const returnUmbrella = (p) => backend.return(p);
 export const openDoor = (p) => backend.openDoor(p);
 export const listStudents = () => backend.listStudents();
+export const savePaymentMethod = (method) => backend.savePaymentMethod(method);
 export const listAllUmbrellas = () => backend.listAllUmbrellas();
 export const listActiveRentals = () => backend.listActiveRentals();
 export const setUmbrellaStatus = (p) => backend.setUmbrellaStatus(p);
@@ -675,6 +779,9 @@ export const getDevicePresence = (s) => backend.getDevicePresence(s);
 export const watchDevicePresence = (s, cb) => backend.watchDevicePresence(s, cb);
 export const debugRecent = () => backend.debugRecent();
 export const health = () => backend.health();
+export const getAuthHeaders = () => (
+  backend.getAuthHeaders ? backend.getAuthHeaders() : Promise.resolve({})
+);
 
 /** Firebase/서버 에러를 사용자용 문구로 변환 */
 export function friendlyError(e) {

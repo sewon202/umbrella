@@ -33,7 +33,7 @@
 import {
   getMode, loginDevice, listAllUmbrellas, listStudents, listActiveRentals,
   setUmbrellaStatus, seedInventory, friendlyError, stationQr, stationLabel,
-} from "/js/backend.js?v=98";
+} from "/js/backend.js?v=108";
 
 const $ = (id) => document.getElementById(id);
 const fmt = (ts) => (ts ? new Date(ts).toLocaleString("ko-KR") : "-");
@@ -83,9 +83,11 @@ async function loadAll() {
   });
 
   $("userBox").innerHTML = table(
-    ["학번", "이름", "가입", "활성 대여"],
+    ["학번", "이름", "재학생 인증", "결제수단", "가입", "활성 대여"],
     users.map((u) => [
-      esc(u.studentId), esc(u.name), fmt(u.created_at),
+      esc(u.studentId), esc(u.name), u.lmsVerified ? "인증됨" : "미인증",
+      (u.paymentRegistered || u.paymentMethod) ? "등록됨" : "미등록",
+      fmt(u.created_at),
       u.activeRental
         ? `${placeSlot(u.activeRental.station, u.activeRental.slot)} · ${fmt(u.activeRental.rented_at)}`
         : "-",

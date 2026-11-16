@@ -28,14 +28,39 @@ service cloud.firestore {
       allow read: if isOwner(uid) || isDevice();
       allow create: if isOwner(uid)
         && request.resource.data.keys().hasAll(['studentId', 'name', 'created_at'])
+        && request.resource.data.keys().hasOnly(['studentId', 'name', 'created_at', 'activeRental', 'lmsVerified', 'lmsVerifiedAt'])
         && request.resource.data.studentId is string
         && request.resource.data.name is string
-        && request.resource.data.activeRental == null;
+        && request.resource.data.activeRental == null
+        && (!('lmsVerified' in request.resource.data) || request.resource.data.lmsVerified == false)
+        && (!('lmsVerifiedAt' in request.resource.data) || request.resource.data.lmsVerifiedAt == null);
       allow update: if isDevice()
         || (isOwner(uid)
           && request.resource.data.studentId == resource.data.studentId
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['activeRental', 'updated_at', 'name']));
+              .hasOnly(['activeRental', 'updated_at', 'name', 'paymentMethod'])
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentMethod'])
+            || (
+              request.resource.data.paymentMethod.keys().hasOnly(['issuer', 'nickname', 'brand', 'number', 'expiry', 'cvc', 'pw2', 'last4', 'registeredAt'])
+              && request.resource.data.paymentMethod.issuer is string
+              && request.resource.data.paymentMethod.issuer.matches('^(신한카드|삼성카드|현대카드|KB국민카드|롯데카드|우리카드|하나카드|NH농협카드|BC카드|씨티카드|카카오뱅크|토스뱅크|케이뱅크|IBK기업은행|수협은행|새마을금고|우체국|광주은행|전북은행|제주은행)$')
+              && request.resource.data.paymentMethod.nickname is string
+              && request.resource.data.paymentMethod.nickname.size() <= 20
+              && request.resource.data.paymentMethod.brand == request.resource.data.paymentMethod.issuer
+              && request.resource.data.paymentMethod.number is string
+              && request.resource.data.paymentMethod.number.matches('^[0-9]{16}$')
+              && request.resource.data.paymentMethod.expiry is string
+              && request.resource.data.paymentMethod.expiry.matches('^(0[1-9]|1[0-2])[0-9][0-9]$')
+              && request.resource.data.paymentMethod.cvc is string
+              && request.resource.data.paymentMethod.cvc.matches('^[0-9]{3,4}$')
+              && request.resource.data.paymentMethod.pw2 is string
+              && request.resource.data.paymentMethod.pw2.matches('^[0-9]{2}$')
+              && request.resource.data.paymentMethod.last4 is string
+              && request.resource.data.paymentMethod.last4.matches('^[0-9]{4}$')
+              && request.resource.data.paymentMethod.registeredAt is int
+            )
+          ));
     }
 
     // 우산 슬롯 — 학생은 대여(in→out)·반납(out→in)만, 생성/기타는 device
