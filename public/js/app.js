@@ -16,12 +16,14 @@ import {
   TOTAL_SLOTS,
   RENT_LIMIT_MS,
   overdueFeeWon,
-  savePaymentMethod,
+  savePaymentWallet,
+  newPaymentId,
+  paymentWallet,
   paymentMethodIssue,
   paymentMethodLabel,
   CARD_ISSUERS,
   STATIONS,
-} from "/js/backend.js?v=114";
+} from "/js/backend.js?v=116";
 import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=49";
 import {
   initCampusMap,
@@ -45,14 +47,20 @@ import {
 initUiScale();
 
 function applyUser(res) {
+  const rental = res.activeRental
+    ? { ...res.activeRental, due_at: Date.now() + RENT_LIMIT_MS }
+    : null;
+  const wallet = paymentWallet(res);
   state.user = {
     id: res.studentId,
     name: res.name,
     uid: res.uid,
-    activeRental: res.activeRental || null,
+    activeRental: rental,
     lmsVerified: res.lmsVerified === true,
     lmsVerifiedAt: res.lmsVerifiedAt || null,
-    paymentMethod: res.paymentMethod || null,
+    paymentMethods: wallet.paymentMethods,
+    defaultPaymentId: wallet.defaultPaymentId,
+    paymentMethod: wallet.paymentMethod,
   };
 }
 
@@ -81,6 +89,7 @@ const state = {
   openSlot: null,
   busy: false,
   returning: false,
+  paying: false,
   tab: "home",
 };
 
@@ -208,6 +217,7 @@ const NAV_DEPTH = {
   "v-signup": 1,
   "v-home": 10,
   "v-settings": 10,
+  "v-pay-list": 11,
   "v-pay": 12,
   "v-qr": 20,
   "v-map": 20,
@@ -247,8 +257,10 @@ function inferNavDir(fromId, toId) {
   if (fromRise && !toRise) return "sink";
   if (fromRise && toRise) return "fade";
   // 설정 → 결제수단: 홈·설정과 같은 가로 stagger
-  if (fromId === "v-settings" && toId === "v-pay") return "tab-right";
-  if (fromId === "v-pay" && (toId === "v-settings" || toId === "v-home")) return "tab-left";
+  if (fromId === "v-settings" && (toId === "v-pay" || toId === "v-pay-list")) return "tab-right";
+  if ((fromId === "v-pay" || fromId === "v-pay-list") && (toId === "v-settings" || toId === "v-home")) return "tab-left";
+  if (fromId === "v-pay-list" && toId === "v-pay") return "tab-right";
+  if (fromId === "v-pay" && toId === "v-pay-list") return "tab-left";
   // 반납 완료 → 홈: 설정→홈과 같은 탭 stagger
   if (toId === "v-home" && fromId === "v-return-done") return "tab-left";
   const tabFrom = TAB_ORDER[fromId];
@@ -347,6 +359,7 @@ function finishShow(id) {
  * - 보관함 스택: 짧은 push/pop
  */
 function show(id, { tab, dir, instant } = {}) {
+  if (state.paying && id !== "v-pick" && id !== "v-return-done") return Promise.resolve();
   const to = $(id);
   if (!to) return Promise.resolve();
 
@@ -822,8 +835,6 @@ async function go() {
       if (how === "sensor" || how === "manual") await playDoorClose(slot);
       state.returning = false;
       syncPickActions();
-      state.user.activeRental = null;
-      await refreshInventory();
       state.busy = false;
       state.selected = null;
       returnWaitResolve = null;
@@ -832,7 +843,16 @@ async function go() {
         const returnedAt = Date.now();
         const fee = returnOverdueFee(rentalSnap, returnedAt);
         let paid = null;
-        if (fee > 0) paid = await askOverduePayment(fee);
+        if (fee > 0) {
+          state.paying = true;
+          try {
+            paid = await askOverduePayment(fee);
+          } finally {
+            state.paying = false;
+          }
+        }
+        state.user.activeRental = null;
+        try { await refreshInventory(); } catch (_) {}
         showReturnDone({
           rental: rentalSnap,
           returnStation: state.station,
@@ -841,6 +861,9 @@ async function go() {
           fee: paid ? fee : 0,
           paymentMethod: paid,
         });
+      } else {
+        state.user.activeRental = null;
+        try { await refreshInventory(); } catch (_) {}
       }
       returnUiDone = true;
     } else {
@@ -908,8 +931,8 @@ function showReturnDone({ rental, returnStation, returnSlot, returnedAt, fee, pa
       feeRow.hidden = false;
       const label = paymentMethodLabel(paymentMethod);
       $("returnDoneFee").textContent = label
-        ? `${fee.toLocaleString("ko-KR")}원 · ${label} 모의 결제`
-        : `${fee.toLocaleString("ko-KR")}원 · 모의 결제`;
+        ? `${fee.toLocaleString("ko-KR")}원 · ${label}`
+        : `${fee.toLocaleString("ko-KR")}원`;
     } else {
       feeRow.hidden = true;
       $("returnDoneFee").textContent = "";
@@ -1022,22 +1045,236 @@ function paintPayCard(prefix, fields = {}) {
 
 function renderPayState() {
   const el = $("setPayState");
-  const label = paymentMethodLabel(state.user && state.user.paymentMethod);
+  const missing = !(state.user && state.user.paymentMethods && state.user.paymentMethods.length);
   if (el) {
-    el.textContent = label || "미등록";
-    el.classList.toggle("ok", !!label);
+    el.hidden = !missing;
+    el.textContent = missing ? "미등록" : "";
+    el.classList.toggle("warn", missing);
+    el.classList.remove("ok");
   }
   const btn = $("paySubmit");
-  if (btn && !btn.disabled) btn.textContent = label ? "변경하기" : "등록하기";
+  if (btn && !btn.disabled) btn.textContent = "등록하기";
 }
 
-function openPayMethod() {
+function openPayForm() {
   if (!state.user) return;
-  fillPayFields("pay", state.user.paymentMethod);
+  fillPayFields("pay", null);
   $("payErr").textContent = "";
+  const hasList = (state.user.paymentMethods || []).length > 0;
+  $("payBack").textContent = hasList ? "← 결제수단" : "← 설정";
   paintPayCard("payCard", readPayFields("pay"));
   renderPayState();
   show("v-pay");
+}
+
+function payText(value) {
+  return String(value || "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[ch]));
+}
+
+function sortedPaymentMethods() {
+  const methods = [...(state.user && state.user.paymentMethods || [])];
+  const def = state.user && state.user.defaultPaymentId;
+  methods.sort((a, b) => (a.id === def ? -1 : b.id === def ? 1 : 0));
+  return methods;
+}
+
+function renderPayList() {
+  const box = $("payList");
+  if (!box || !state.user) return;
+  const methods = sortedPaymentMethods();
+  box.innerHTML = methods.map((item) => {
+    const on = item.id === state.user.defaultPaymentId;
+    const sub = item.nickname && item.nickname !== item.issuer ? item.issuer : "";
+    return `<div class="pay-swipe" data-id="${payText(item.id)}">
+      <button type="button" class="pay-swipe-delete" tabindex="-1" aria-label="삭제">
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3.5h6l.7 1.5H20v2H4v-2h4.3L9 3.5zM6.2 9h11.6l-.7 11.1A2 2 0 0 1 15.1 22H8.9a2 2 0 0 1-2-1.9L6.2 9z"/></svg>
+      </button>
+      <button type="button" class="pay-list-item${on ? " on" : ""}">
+        <span class="pay-list-copy">
+          <strong>${payText(paymentMethodLabel(item))}</strong>
+          ${sub ? `<span class="pay-list-sub">${payText(sub)}</span>` : ""}
+        </span>
+        <span class="${on ? "pay-list-badge" : "pay-list-set"}">${on ? "기본" : "기본으로"}</span>
+      </button>
+    </div>`;
+  }).join("");
+  closePaySwipes(box);
+}
+
+function paySwipeOffset(row) {
+  const item = row && row.querySelector(".pay-list-item");
+  if (!item) return 0;
+  const match = /translate3d\((-?\d+(?:\.\d+)?)px/.exec(item.style.transform || "");
+  return match ? Number(match[1]) : 0;
+}
+
+function setPaySwipe(row, x, animate) {
+  const item = row.querySelector(".pay-list-item");
+  const del = row.querySelector(".pay-swipe-delete");
+  if (!item || !del) return;
+  const revealed = Math.max(0, -x);
+  const progress = Math.min(1, revealed / PAY_SWIPE_OPEN);
+  const scale = 0.28 + 0.72 * progress;
+  item.style.transition = animate ? "" : "none";
+  del.style.transition = animate ? "" : "none";
+  item.style.transform = `translate3d(${x}px,0,0)`;
+  del.style.transform = `translateY(-50%) scale(${scale})`;
+  del.style.opacity = String(Math.min(1, progress * 1.2));
+  del.classList.toggle("is-ready", revealed > 36);
+}
+
+function closePaySwipes(box, except) {
+  (box || $("payList")).querySelectorAll(".pay-swipe").forEach((row) => {
+    if (row !== except) setPaySwipe(row, 0, true);
+  });
+}
+
+const PAY_SWIPE_OPEN = 72;
+
+function bindPaySwipe() {
+  const box = $("payList");
+  if (!box || box.dataset.swipe) return;
+  box.dataset.swipe = "1";
+  let drag = null;
+  let suppressClick = false;
+
+  box.addEventListener("pointerdown", (event) => {
+    const row = event.target.closest(".pay-swipe");
+    if (!row || event.target.closest(".pay-swipe-delete")) return;
+    closePaySwipes(box, row);
+    drag = {
+      row,
+      x: event.clientX,
+      y: event.clientY,
+      start: paySwipeOffset(row),
+      pid: event.pointerId,
+      axis: null,
+      moved: false,
+    };
+    row.classList.add("is-dragging");
+  });
+
+  box.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.pid) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.axis) {
+      if (Math.hypot(dx, dy) < 8) return;
+      drag.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (drag.axis === "y") {
+        drag.row.classList.remove("is-dragging");
+        drag = null;
+        return;
+      }
+    }
+    if (drag.axis !== "x") return;
+    drag.moved = true;
+    let next = drag.start + dx;
+    if (next > 0) next *= 0.18;
+    const limit = -Math.min(drag.row.offsetWidth * 0.72, 220);
+    if (next < limit) next = limit + (next - limit) * 0.22;
+    setPaySwipe(drag.row, next, false);
+  });
+
+  const endDrag = (event) => {
+    if (!drag || (event && event.pointerId !== drag.pid)) return;
+    const row = drag.row;
+    row.classList.remove("is-dragging");
+    const x = paySwipeOffset(row);
+    const open = drag.moved && x < -PAY_SWIPE_OPEN * 0.42;
+    setPaySwipe(row, open ? -PAY_SWIPE_OPEN : 0, true);
+    if (drag.moved) suppressClick = true;
+    drag = null;
+  };
+  box.addEventListener("pointerup", endDrag);
+  box.addEventListener("pointercancel", endDrag);
+
+  box.addEventListener("click", async (event) => {
+    if (suppressClick) {
+      suppressClick = false;
+      event.preventDefault();
+      return;
+    }
+    const del = event.target.closest(".pay-swipe-delete");
+    if (del) {
+      const id = del.closest(".pay-swipe").dataset.id;
+      openPayDelete(id);
+      return;
+    }
+    const item = event.target.closest(".pay-list-item");
+    if (!item || !state.user) return;
+    const row = item.closest(".pay-swipe");
+    if (row && paySwipeOffset(row) < -8) {
+      setPaySwipe(row, 0, true);
+      return;
+    }
+    const id = row && row.dataset.id;
+    if (!id || id === state.user.defaultPaymentId) return;
+    try {
+      await storePaymentWallet(state.user.paymentMethods, id);
+      renderPayList();
+    } catch (ex) {
+      const err = $("payListErr");
+      if (err) err.textContent = ex.message || "기본 결제수단을 바꾸지 못했어요.";
+    }
+  });
+}
+
+function openPayDelete(id) {
+  const dialog = $("payDelete");
+  if (!dialog) return;
+  dialog.dataset.id = id;
+  dialog.hidden = false;
+  requestAnimationFrame(() => dialog.classList.add("is-in"));
+}
+
+function closePayDelete() {
+  const dialog = $("payDelete");
+  if (!dialog) return;
+  dialog.classList.remove("is-in");
+  dialog.hidden = true;
+}
+
+async function confirmPayDelete() {
+  const dialog = $("payDelete");
+  const id = dialog && dialog.dataset.id;
+  closePayDelete();
+  if (!id || !state.user) return;
+  const methods = (state.user.paymentMethods || []).filter((item) => item.id !== id);
+  let defaultId = state.user.defaultPaymentId;
+  if (!methods.some((item) => item.id === defaultId)) defaultId = methods[0] ? methods[0].id : "";
+  try {
+    await storePaymentWallet(methods, defaultId);
+    if (!methods.length) show("v-settings", { tab: "settings" });
+    else renderPayList();
+  } catch (ex) {
+    const err = $("payListErr");
+    if (err) err.textContent = ex.message || "결제수단을 삭제하지 못했어요.";
+    renderPayList();
+  }
+}
+function openPayList() {
+  if (!state.user) return;
+  renderPayList();
+  show("v-pay-list");
+}
+
+function openPayments() {
+  if (!state.user) return;
+  if ((state.user.paymentMethods || []).length) openPayList();
+  else openPayForm();
+}
+
+async function storePaymentWallet(methods, defaultPaymentId) {
+  if (methods.length > 5) throw new Error("결제수단은 5개까지 등록할 수 있어요.");
+  const saved = await savePaymentWallet({ paymentMethods: methods, defaultPaymentId });
+  state.user.paymentMethods = saved.paymentMethods;
+  state.user.defaultPaymentId = saved.defaultPaymentId;
+  state.user.paymentMethod = saved.paymentMethod;
+  renderPayState();
+  return saved;
 }
 
 function bindPayTyping(prefix, cardPrefix) {
@@ -1077,11 +1314,42 @@ function askOverduePayment(fee) {
     const fields = has ? saved : readPayFields("payOverlay");
     paintPayCard("charge", fields);
     form.hidden = has;
+    const fine = $("payOverlayFine");
+    if (fine) fine.textContent = has ? "기본 결제수단으로 결제해요." : "카드를 등록하면 이 금액이 결제돼요.";
     btn.textContent = has ? `${amount} 결제하기` : "등록하고 결제하기";
   };
   paint();
   bindPayTyping("payOverlay", "charge");
+  const tall = !paymentMethodLabel(state.user && state.user.paymentMethod);
+  overlay.classList.toggle("is-tall", tall);
   overlay.hidden = false;
+  overlay.classList.remove("is-in");
+  requestAnimationFrame(() => {
+    void overlay.offsetWidth;
+    overlay.classList.add("is-in");
+  });
+
+  const hideOverlay = () => new Promise((done) => {
+    overlay.classList.remove("is-in");
+    const sheet = overlay.querySelector(".pay-checkout");
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      overlay.hidden = true;
+      overlay.classList.remove("is-tall");
+      done();
+    };
+    if (sheet) {
+      const onEnd = (event) => {
+        if (event.target !== sheet) return;
+        sheet.removeEventListener("transitionend", onEnd);
+        finish();
+      };
+      sheet.addEventListener("transitionend", onEnd);
+    }
+    setTimeout(finish, 520);
+  });
 
   return new Promise((resolve) => {
     btn.onclick = async () => {
@@ -1096,19 +1364,19 @@ function askOverduePayment(fee) {
       btn.disabled = true;
       try {
         if (fields) {
-          const saved = await savePaymentMethod(fields);
-          state.user.paymentMethod = saved;
-          renderPayState();
+          const card = { ...fields, id: newPaymentId(), registeredAt: Date.now() };
+          const methods = [...(state.user.paymentMethods || []), card];
+          await storePaymentWallet(methods, state.user.defaultPaymentId || card.id);
           paint();
         }
         btn.textContent = "결제 중…";
         await wait(1100);
         const paid = state.user.paymentMethod;
-        overlay.hidden = true;
         btn.onclick = null;
+        await hideOverlay();
         resolve(paid);
       } catch (ex) {
-        err.textContent = ex.message || "모의 결제에 실패했어요.";
+        err.textContent = ex.message || "결제에 실패했어요.";
         btn.disabled = false;
         paint();
       }
@@ -1486,7 +1754,7 @@ async function openCampusMap() {
 }
 
 function goTab(tab) {
-  if (!state.user) return;
+  if (!state.user || state.paying) return;
   if (tab === "home") {
     closeQrCamera();
     hideMapSheet();
@@ -1519,8 +1787,19 @@ $("pw").onkeydown = $("sid").onkeydown = (e) => { if (e.key === "Enter") login()
 $("joinBtn").onclick = signupSubmit;
 $("goSignup").onclick = (e) => { e.preventDefault(); showAuth("signup"); };
 $("goLogin").onclick = (e) => { e.preventDefault(); showAuth("login"); };
-$("settingsPayment").onclick = () => openPayMethod();
-$("payBack").onclick = () => show("v-settings", { tab: "settings" });
+$("settingsPayment").onclick = () => openPayments();
+$("payBack").onclick = () => {
+  if ((state.user && state.user.paymentMethods || []).length) openPayList();
+  else show("v-settings", { tab: "settings" });
+};
+$("payListBack").onclick = () => show("v-settings", { tab: "settings" });
+$("payAdd").onclick = () => openPayForm();
+bindPaySwipe();
+$("payDeleteCancel").onclick = () => closePayDelete();
+$("payDeleteOk").onclick = () => confirmPayDelete();
+$("payDelete").onclick = (event) => {
+  if (event.target === $("payDelete")) closePayDelete();
+};
 bindPayTyping("pay", "payCard");
 mountIssuers("pay");
 mountIssuers("payOverlay");
@@ -1542,15 +1821,10 @@ $("payForm").onsubmit = async (e) => {
   btn.disabled = true;
   btn.textContent = "저장 중…";
   try {
-    const saved = await savePaymentMethod(fields);
-    state.user.paymentMethod = saved;
-    renderPayState();
-    show("v-settings", { tab: "settings" });
-    const t = $("settingsToast");
-    t.hidden = false;
-    t.textContent = "결제수단을 등록했어요.";
-    requestAnimationFrame(() => t.classList.add("show"));
-    setTimeout(() => t.classList.remove("show"), 1800);
+    const card = { ...fields, id: newPaymentId(), registeredAt: Date.now() };
+    const methods = [...(state.user.paymentMethods || []), card];
+    await storePaymentWallet(methods, state.user.defaultPaymentId || card.id);
+    openPayList();
   } catch (ex) {
     err.textContent = ex.message || "결제수단을 저장하지 못했어요.";
   } finally {

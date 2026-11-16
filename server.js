@@ -14,7 +14,7 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 const DEVICE_KEY = process.env.DEVICE_KEY || "umbrella-device";
 const MAX_HW_SLOT = 2;
-const RENT_LIMIT_MS = 48 * 3600 * 1000;
+const RENT_LIMIT_MS = 24 * 1000;
 const STATIONS = [
   ["A1", "형남공학관 2층 입구"],
   ["B2", "중앙도서관 출입구"],
@@ -79,6 +79,7 @@ for (const sql of [
   "ALTER TABLE students ADD COLUMN payment_pw2 TEXT",
   "ALTER TABLE students ADD COLUMN payment_last4 TEXT",
   "ALTER TABLE students ADD COLUMN payment_registered_at INTEGER",
+  "ALTER TABLE students ADD COLUMN payment_wallet TEXT",
 ]) {
   try { db.exec(sql); } catch (_) {}
 }
@@ -127,9 +128,10 @@ const q = {
   markStudentVerified: db.prepare(
     "UPDATE students SET lms_verified = 1, lms_verified_at = ? WHERE student_id = ?"
   ),
-  setPaymentMethod: db.prepare(
+  setPaymentWallet: db.prepare(
     `UPDATE students
-     SET payment_brand = ?, payment_nickname = ?, payment_number = ?, payment_expiry = ?, payment_cvc = ?,
+     SET payment_wallet = ?,
+         payment_brand = ?, payment_nickname = ?, payment_number = ?, payment_expiry = ?, payment_cvc = ?,
          payment_pw2 = ?, payment_last4 = ?, payment_registered_at = ?
      WHERE student_id = ?`
   ),
@@ -249,6 +251,28 @@ function normalizePayment(body) {
     },
   };
 }
+function studentWallet(u) {
+  let stored = {};
+  try { stored = JSON.parse(u.payment_wallet || "null") || {}; } catch (_) { stored = {}; }
+  if (!Array.isArray(stored.paymentMethods) && u.payment_number) {
+    stored.paymentMethod = paymentView(u);
+  }
+  const methods = [];
+  for (const item of stored.paymentMethods || (stored.paymentMethod ? [stored.paymentMethod] : [])) {
+    const parsed = normalizePayment(item);
+    if (parsed.error) continue;
+    methods.push({ ...parsed.value, id: String(item.id || `card-${methods.length + 1}`) });
+  }
+  let defaultPaymentId = String(stored.defaultPaymentId || "");
+  if (!methods.some((item) => item.id === defaultPaymentId)) {
+    defaultPaymentId = methods[0] ? methods[0].id : "";
+  }
+  return {
+    paymentMethods: methods,
+    defaultPaymentId,
+    paymentMethod: methods.find((item) => item.id === defaultPaymentId) || null,
+  };
+}
 const paymentView = (u) => (
   u && /^\d{16}$/.test(u.payment_number || "") && CARD_ISSUERS.includes(u.payment_brand || "")
     ? {
@@ -332,7 +356,9 @@ app.post("/api/login", (req, res) => {
     name: u.name,
     lmsVerified: !!u.lms_verified,
     lmsVerifiedAt: u.lms_verified_at || null,
-    paymentMethod: paymentView(u),
+    paymentMethod: studentWallet(u).paymentMethod,
+    paymentMethods: studentWallet(u).paymentMethods,
+    defaultPaymentId: studentWallet(u).defaultPaymentId,
     activeRental: rentalView(q.activeRental.get(u.student_id)) || null,
   });
 });
@@ -348,7 +374,9 @@ app.get("/api/me", (req, res) => {
     name: u.name,
     lmsVerified: !!u.lms_verified,
     lmsVerifiedAt: u.lms_verified_at || null,
-    paymentMethod: paymentView(u),
+    paymentMethod: studentWallet(u).paymentMethod,
+    paymentMethods: studentWallet(u).paymentMethods,
+    defaultPaymentId: studentWallet(u).defaultPaymentId,
   });
 });
 
@@ -356,13 +384,38 @@ app.post("/api/payment-method", (req, res) => {
   const t = (req.headers.authorization || "").replace("Bearer ", "");
   const s = sessions.get(t);
   if (!s || s.exp < Date.now()) return bad(res, "로그인이 필요해요.", 401);
-  const parsed = normalizePayment(req.body || {});
-  if (parsed.error) return bad(res, parsed.error);
-  const pay = parsed.value;
-  q.setPaymentMethod.run(
-    pay.brand, pay.nickname, pay.number, pay.expiry, pay.cvc, pay.pw2, pay.last4, pay.registeredAt, s.id
+  const body = req.body || {};
+  const incoming = Array.isArray(body.paymentMethods) ? body.paymentMethods : [body];
+  const methods = [];
+  for (const item of incoming) {
+    const parsed = normalizePayment(item);
+    if (parsed.error) return bad(res, parsed.error);
+    methods.push({ ...parsed.value, id: String(item.id || `card-${methods.length + 1}`) });
+  }
+  if (methods.length > 5) return bad(res, "결제수단은 5개까지 등록할 수 있어요.");
+  let defaultPaymentId = String(body.defaultPaymentId || "");
+  if (!methods.some((item) => item.id === defaultPaymentId)) {
+    defaultPaymentId = methods[0] ? methods[0].id : "";
+  }
+  const selected = methods.find((item) => item.id === defaultPaymentId) || null;
+  q.setPaymentWallet.run(
+    JSON.stringify({ paymentMethods: methods, defaultPaymentId }),
+    selected ? selected.brand : null,
+    selected ? selected.nickname : null,
+    selected ? selected.number : null,
+    selected ? selected.expiry : null,
+    selected ? selected.cvc : null,
+    selected ? selected.pw2 : null,
+    selected ? selected.last4 : null,
+    selected ? selected.registeredAt : null,
+    s.id
   );
-  res.json({ ok: true, paymentMethod: pay });
+  res.json({
+    ok: true,
+    paymentMethods: methods,
+    defaultPaymentId,
+    paymentMethod: selected,
+  });
 });
 
 app.get("/api/students/:id/rental", (req, res) => {

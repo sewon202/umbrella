@@ -22,6 +22,59 @@ service cloud.firestore {
     function deviceTestAction(action) {
       return action in ['test_open', 'test_close'];
     }
+    function validPayCard(card) {
+      return card.keys().hasOnly(['id', 'issuer', 'nickname', 'brand', 'number', 'expiry', 'cvc', 'pw2', 'last4', 'registeredAt'])
+        && card.id is string
+        && card.id.size() > 0
+        && card.id.size() <= 40
+        && card.issuer is string
+        && card.issuer.matches('^(신한카드|삼성카드|현대카드|KB국민카드|롯데카드|우리카드|하나카드|NH농협카드|BC카드|씨티카드|카카오뱅크|토스뱅크|케이뱅크|IBK기업은행|수협은행|새마을금고|우체국|광주은행|전북은행|제주은행)$')
+        && card.nickname is string
+        && card.nickname.size() <= 20
+        && card.brand == card.issuer
+        && card.number is string
+        && card.number.matches('^[0-9]{16}$')
+        && card.expiry is string
+        && card.expiry.matches('^(0[1-9]|1[0-2])[0-9][0-9]$')
+        && card.cvc is string
+        && card.cvc.matches('^[0-9]{3,4}$')
+        && card.pw2 is string
+        && card.pw2.matches('^[0-9]{2}$')
+        && card.last4 is string
+        && card.last4.matches('^[0-9]{4}$')
+        && card.registeredAt is int;
+    }
+    function validPayList(cards) {
+      return cards is list
+        && cards.size() <= 5
+        && (cards.size() < 1 || validPayCard(cards[0]))
+        && (cards.size() < 2 || validPayCard(cards[1]))
+        && (cards.size() < 3 || validPayCard(cards[2]))
+        && (cards.size() < 4 || validPayCard(cards[3]))
+        && (cards.size() < 5 || validPayCard(cards[4]));
+    }
+    function payWalletOk() {
+      return validPayList(request.resource.data.paymentMethods)
+        && request.resource.data.defaultPaymentId is string
+        && (
+          (request.resource.data.paymentMethods.size() == 0
+            && request.resource.data.defaultPaymentId == ''
+            && request.resource.data.paymentMethod == null)
+          || (request.resource.data.paymentMethods.size() > 0
+            && validPayCard(request.resource.data.paymentMethod)
+            && defaultIsListed())
+        );
+    }
+    function defaultIsListed() {
+      return request.resource.data.defaultPaymentId == request.resource.data.paymentMethod.id
+        && (
+          request.resource.data.paymentMethods[0].id == request.resource.data.defaultPaymentId
+          || (request.resource.data.paymentMethods.size() > 1 && request.resource.data.paymentMethods[1].id == request.resource.data.defaultPaymentId)
+          || (request.resource.data.paymentMethods.size() > 2 && request.resource.data.paymentMethods[2].id == request.resource.data.defaultPaymentId)
+          || (request.resource.data.paymentMethods.size() > 3 && request.resource.data.paymentMethods[3].id == request.resource.data.defaultPaymentId)
+          || (request.resource.data.paymentMethods.size() > 4 && request.resource.data.paymentMethods[4].id == request.resource.data.defaultPaymentId)
+        );
+    }
 
     // 사용자 프로필 — 본인 또는 device(관리)만
     match /students/{uid} {
@@ -38,27 +91,12 @@ service cloud.firestore {
         || (isOwner(uid)
           && request.resource.data.studentId == resource.data.studentId
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['activeRental', 'updated_at', 'name', 'paymentMethod'])
+              .hasOnly(['activeRental', 'updated_at', 'name', 'paymentMethod', 'paymentMethods', 'defaultPaymentId'])
           && (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentMethod'])
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentMethod', 'paymentMethods', 'defaultPaymentId'])
             || (
-              request.resource.data.paymentMethod.keys().hasOnly(['issuer', 'nickname', 'brand', 'number', 'expiry', 'cvc', 'pw2', 'last4', 'registeredAt'])
-              && request.resource.data.paymentMethod.issuer is string
-              && request.resource.data.paymentMethod.issuer.matches('^(신한카드|삼성카드|현대카드|KB국민카드|롯데카드|우리카드|하나카드|NH농협카드|BC카드|씨티카드|카카오뱅크|토스뱅크|케이뱅크|IBK기업은행|수협은행|새마을금고|우체국|광주은행|전북은행|제주은행)$')
-              && request.resource.data.paymentMethod.nickname is string
-              && request.resource.data.paymentMethod.nickname.size() <= 20
-              && request.resource.data.paymentMethod.brand == request.resource.data.paymentMethod.issuer
-              && request.resource.data.paymentMethod.number is string
-              && request.resource.data.paymentMethod.number.matches('^[0-9]{16}$')
-              && request.resource.data.paymentMethod.expiry is string
-              && request.resource.data.paymentMethod.expiry.matches('^(0[1-9]|1[0-2])[0-9][0-9]$')
-              && request.resource.data.paymentMethod.cvc is string
-              && request.resource.data.paymentMethod.cvc.matches('^[0-9]{3,4}$')
-              && request.resource.data.paymentMethod.pw2 is string
-              && request.resource.data.paymentMethod.pw2.matches('^[0-9]{2}$')
-              && request.resource.data.paymentMethod.last4 is string
-              && request.resource.data.paymentMethod.last4.matches('^[0-9]{4}$')
-              && request.resource.data.paymentMethod.registeredAt is int
+              validPayList(request.resource.data.paymentMethods)
+              && payWalletOk()
             )
           ));
     }

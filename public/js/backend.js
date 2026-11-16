@@ -38,7 +38,8 @@ const cfg = window.UMBRELLA || {};
 const fb = cfg.firebase || {};
 export const MAX_HW_SLOT = (cfg.cost && cfg.cost.maxHwSlot) || 2;
 export const TOTAL_SLOTS = 6;
-export const RENT_LIMIT_MS = 48 * 3600 * 1000;
+/** 테스트용 임시 값. 원래는 48시간. */
+export const RENT_LIMIT_MS = 24 * 1000;
 /** 48시간 초과 후: 5분마다 1,000원 */
 export const OVERDUE_FEE_WON = 1000;
 export const OVERDUE_FEE_UNIT_MS = 5 * 60 * 1000;
@@ -78,6 +79,7 @@ export function paymentMethodView(raw) {
   const cvc = String(raw.cvc || "").replace(/\D/g, "");
   const pw2 = String(raw.pw2 || "").replace(/\D/g, "");
   return {
+    id: String(raw.id || ""),
     issuer,
     nickname,
     brand: issuer,
@@ -86,7 +88,36 @@ export function paymentMethodView(raw) {
     cvc,
     pw2,
     last4: number.slice(-4),
-    registeredAt: raw.registeredAt || null,
+    registeredAt: Number(raw.registeredAt) || Date.now(),
+  };
+}
+
+export function newPaymentId() {
+  return `card-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** 예전 카드 1장과 새 목록을 같은 모양으로 맞춘다. */
+export function paymentWallet(source) {
+  const data = source || {};
+  const listed = Array.isArray(data.paymentMethods) ? data.paymentMethods : [];
+  let methods = listed.map((item) => {
+    const view = paymentMethodView(item);
+    if (!view) return null;
+    return { ...view, id: String((item && item.id) || view.id || "") };
+  }).filter(Boolean);
+  if (!methods.length && data.paymentMethod) {
+    const one = paymentMethodView(data.paymentMethod);
+    if (one) methods = [{ ...one, id: String(data.paymentMethod.id || "card-1") }];
+  }
+  methods = methods.map((item, index) => ({ ...item, id: item.id || `card-${index + 1}` }));
+  let defaultPaymentId = String(data.defaultPaymentId || "");
+  if (!methods.some((item) => item.id === defaultPaymentId)) {
+    defaultPaymentId = methods[0] ? methods[0].id : "";
+  }
+  return {
+    paymentMethods: methods,
+    defaultPaymentId,
+    paymentMethod: methods.find((item) => item.id === defaultPaymentId) || null,
   };
 }
 
@@ -198,7 +229,7 @@ function createLocalBackend() {
         activeRental: r.activeRental || null,
         lmsVerified: r.lmsVerified === true,
         lmsVerifiedAt: r.lmsVerifiedAt || null,
-        paymentMethod: paymentMethodView(r.paymentMethod),
+        ...paymentWallet(r),
       };
       localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({
         token: r.token, ...user, exp: Date.now() + SESSION_MS,
@@ -236,7 +267,7 @@ function createLocalBackend() {
           activeRental,
           lmsVerified: me.lmsVerified === true,
           lmsVerifiedAt: me.lmsVerifiedAt || null,
-          paymentMethod: paymentMethodView(me.paymentMethod),
+          ...paymentWallet(me),
         };
       } catch (_) {
         localStorage.removeItem(LOCAL_SESSION_KEY);
@@ -265,22 +296,16 @@ function createLocalBackend() {
       assertSlot(slot);
       return api("POST", "/api/open", { station, slot, studentId, action });
     },
-    async savePaymentMethod(method) {
-      const issue = paymentMethodIssue(method);
-      if (issue) throw new Error(issue);
-      const pay = paymentMethodView(method);
+    async savePaymentWallet(wallet) {
+      const clean = paymentWallet(wallet);
       const raw = localStorage.getItem(LOCAL_SESSION_KEY);
       const s = raw ? JSON.parse(raw) : null;
       if (!s || !s.token) throw new Error("로그인이 필요해요.");
       const saved = await api("POST", "/api/payment-method", {
-        issuer: pay.issuer,
-        nickname: pay.nickname,
-        number: pay.number,
-        expiry: pay.expiry,
-        cvc: pay.cvc,
-        pw2: pay.pw2,
+        paymentMethods: clean.paymentMethods,
+        defaultPaymentId: clean.defaultPaymentId,
       }, { Authorization: `Bearer ${s.token}` });
-      return paymentMethodView(saved.paymentMethod);
+      return paymentWallet(saved);
     },
     async listStudents() { return (await api("GET", "/api/admin/students")).students; },
     async listAllUmbrellas() { return (await api("GET", "/api/admin/umbrellas")).umbrellas; },
@@ -358,7 +383,7 @@ function createFirebaseBackend() {
       activeRental: data.activeRental || null,
       lmsVerified: data.lmsVerified === true,
       lmsVerifiedAt: data.lmsVerifiedAt || null,
-      paymentMethod: paymentMethodView(data.paymentMethod),
+      ...paymentWallet(data),
     };
   }
 
@@ -549,17 +574,18 @@ function createFirebaseBackend() {
       return { ok: true, id: ref.id, station, slot, action };
     },
 
-    async savePaymentMethod(method) {
-      const draft = { ...method, registeredAt: Date.now() };
-      const issue = paymentMethodIssue(draft);
-      if (issue) throw new Error(issue);
-      const pay = paymentMethodView(draft);
+    async savePaymentWallet(wallet) {
+      const clean = paymentWallet(wallet);
+      if (clean.paymentMethods.length > 5) throw new Error("결제수단은 5개까지 등록할 수 있어요.");
       const user = requireUser();
+      const now = Date.now();
       await updateDoc(doc(db, "students", user.uid), {
-        paymentMethod: pay,
-        updated_at: pay.registeredAt,
+        paymentMethods: clean.paymentMethods,
+        defaultPaymentId: clean.defaultPaymentId,
+        paymentMethod: clean.paymentMethod,
+        updated_at: now,
       });
-      return pay;
+      return clean;
     },
 
     async listStudents() {
@@ -770,7 +796,7 @@ export const rentUmbrella = (p) => backend.rent(p);
 export const returnUmbrella = (p) => backend.return(p);
 export const openDoor = (p) => backend.openDoor(p);
 export const listStudents = () => backend.listStudents();
-export const savePaymentMethod = (method) => backend.savePaymentMethod(method);
+export const savePaymentWallet = (wallet) => backend.savePaymentWallet(wallet);
 export const listAllUmbrellas = () => backend.listAllUmbrellas();
 export const listActiveRentals = () => backend.listActiveRentals();
 export const setUmbrellaStatus = (p) => backend.setUmbrellaStatus(p);
