@@ -17,10 +17,11 @@ import {
   RENT_LIMIT_MS,
   overdueFeeWon,
   savePaymentMethod,
+  paymentMethodIssue,
   paymentMethodLabel,
   CARD_ISSUERS,
   STATIONS,
-} from "/js/backend.js?v=109";
+} from "/js/backend.js?v=114";
 import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=49";
 import {
   initCampusMap,
@@ -492,10 +493,18 @@ async function enterStation(code) {
   show("v-place");
 }
 
+function cleanStudentId(value) {
+  return String(value || "").replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+}
+
 async function login() {
-  const studentId = $("sid").value.trim();
-  const password = $("pw").value;
+  const studentId = cleanStudentId($("sid").value);
+  const password = $("pw").value.replace(/[\u200B-\u200D\uFEFF]/g, "");
   $("loginErr").textContent = "";
+  if (!/^\d{6,10}$/.test(studentId)) {
+    $("loginErr").textContent = "학번은 숫자 6~10자리로 입력해 주세요.";
+    return;
+  }
   try {
     const res = await apiLogin({ studentId, password });
     applyUser(res);
@@ -512,7 +521,7 @@ async function login() {
 }
 
 async function signupSubmit() {
-  const studentId = $("joinSid").value.trim();
+  const studentId = cleanStudentId($("joinSid").value);
   const name = $("joinName").value.trim();
   const password = $("joinPw").value;
   const out = $("joinErr");
@@ -966,7 +975,8 @@ function selectIssuer(prefix, name, { scroll } = {}) {
     el.classList.toggle("on", on);
     el.setAttribute("aria-selected", on ? "true" : "false");
     if (on) {
-      el.scrollIntoView({ inline: "center", block: "nearest", behavior: scroll ? "smooth" : "auto" });
+      const left = el.offsetLeft - Math.max(0, (box.clientWidth - el.offsetWidth) / 2);
+      box.scrollTo({ left: Math.max(0, left), behavior: scroll ? "smooth" : "auto" });
     }
   });
   return picked;
@@ -988,7 +998,9 @@ function mountIssuers(prefix) {
 }
 
 function fillPayFields(prefix, pay) {
-  $(`${prefix}Nickname`).value = pay ? (pay.nickname || "") : "";
+  const issuer = pay ? (pay.issuer || pay.brand || "") : "";
+  const nickname = pay && pay.nickname && pay.nickname !== issuer ? pay.nickname : "";
+  $(`${prefix}Nickname`).value = nickname;
   $(`${prefix}Number`).value = pay ? formatCardNumber(pay.number) : "";
   $(`${prefix}Expiry`).value = pay ? formatExpiry(pay.expiry) : "";
   $(`${prefix}Cvc`).value = pay ? pay.cvc : "";
@@ -1074,10 +1086,17 @@ function askOverduePayment(fee) {
   return new Promise((resolve) => {
     btn.onclick = async () => {
       err.textContent = "";
+      const registering = !paymentMethodLabel(state.user && state.user.paymentMethod);
+      const fields = registering ? readPayFields("payOverlay") : null;
+      const issue = fields ? paymentMethodIssue(fields) : "";
+      if (issue) {
+        err.textContent = issue;
+        return;
+      }
       btn.disabled = true;
       try {
-        if (!paymentMethodLabel(state.user && state.user.paymentMethod)) {
-          const saved = await savePaymentMethod(readPayFields("payOverlay"));
+        if (fields) {
+          const saved = await savePaymentMethod(fields);
           state.user.paymentMethod = saved;
           renderPayState();
           paint();
@@ -1514,16 +1533,22 @@ $("payForm").onsubmit = async (e) => {
     err.textContent = "로그인 후 등록해 주세요.";
     return;
   }
+  const fields = readPayFields("pay");
+  const issue = paymentMethodIssue(fields);
+  if (issue) {
+    err.textContent = issue;
+    return;
+  }
   btn.disabled = true;
   btn.textContent = "저장 중…";
   try {
-    const saved = await savePaymentMethod(readPayFields("pay"));
+    const saved = await savePaymentMethod(fields);
     state.user.paymentMethod = saved;
     renderPayState();
     show("v-settings", { tab: "settings" });
     const t = $("settingsToast");
     t.hidden = false;
-    t.textContent = "모의 결제수단을 저장했어요.";
+    t.textContent = "결제수단을 등록했어요.";
     requestAnimationFrame(() => t.classList.add("show"));
     setTimeout(() => t.classList.remove("show"), 1800);
   } catch (ex) {
@@ -1582,7 +1607,7 @@ $("verifyForm").onsubmit = async (e) => {
       },
       body: JSON.stringify({
         studentId: state.user.id,
-        password: $("verifyPw").value,
+        password: $("verifyPw").value.replace(/[\u200B-\u200D\uFEFF]/g, ""),
       }),
     });
     const data = await res.json().catch(() => ({}));

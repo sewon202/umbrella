@@ -48,43 +48,35 @@ export function overdueFeeWon(overdueMs) {
   return Math.ceil(overdueMs / OVERDUE_FEE_UNIT_MS) * OVERDUE_FEE_WON;
 }
 
-export const CARD_ISSUERS = [
-  "신한카드",
-  "삼성카드",
-  "현대카드",
-  "KB국민카드",
-  "롯데카드",
-  "우리카드",
-  "하나카드",
-  "NH농협카드",
-  "BC카드",
-  "씨티카드",
-  "카카오뱅크",
-  "토스뱅크",
-  "케이뱅크",
-  "IBK기업은행",
-  "수협은행",
-  "새마을금고",
-  "우체국",
-  "광주은행",
-  "전북은행",
-  "제주은행",
-];
+import { CARD_ISSUERS } from "/js/card-issuers.js?v=110";
 
-export function paymentMethodView(raw) {
-  if (!raw || typeof raw !== "object") return null;
+export { CARD_ISSUERS };
+
+export function paymentMethodIssue(raw) {
+  if (!raw || typeof raw !== "object") return "카드 정보를 다시 확인해 주세요.";
   const issuer = String(raw.issuer || raw.brand || "").trim();
   const nickname = String(raw.nickname || "").trim();
   const number = String(raw.number || "").replace(/\D/g, "");
   const expiry = String(raw.expiry || "").replace(/\D/g, "");
   const cvc = String(raw.cvc || "").replace(/\D/g, "");
   const pw2 = String(raw.pw2 || "").replace(/\D/g, "");
-  if (!CARD_ISSUERS.includes(issuer)) return null;
-  if (nickname.length > 20) return null;
-  if (!/^\d{16}$/.test(number)) return null;
-  if (!/^(0[1-9]|1[0-2])\d{2}$/.test(expiry)) return null;
-  if (!/^\d{3,4}$/.test(cvc)) return null;
-  if (!/^\d{2}$/.test(pw2)) return null;
+  if (!CARD_ISSUERS.includes(issuer)) return "카드사를 목록에서 선택해 주세요.";
+  if (nickname.length > 20) return "카드 별명은 20자 안으로 입력해 주세요.";
+  if (!/^\d{16}$/.test(number)) return "카드 번호 16자리를 입력해 주세요.";
+  if (!/^(0[1-9]|1[0-2])\d{2}$/.test(expiry)) return "유효기간을 MM/YY로 입력해 주세요.";
+  if (!/^\d{3,4}$/.test(cvc)) return "CVC 3~4자리를 입력해 주세요.";
+  if (!/^\d{2}$/.test(pw2)) return "비밀번호 끝 2자리를 입력해 주세요.";
+  return "";
+}
+
+export function paymentMethodView(raw) {
+  if (paymentMethodIssue(raw)) return null;
+  const issuer = String(raw.issuer || raw.brand || "").trim();
+  const nickname = String(raw.nickname || "").trim() || issuer;
+  const number = String(raw.number || "").replace(/\D/g, "");
+  const expiry = String(raw.expiry || "").replace(/\D/g, "");
+  const cvc = String(raw.cvc || "").replace(/\D/g, "");
+  const pw2 = String(raw.pw2 || "").replace(/\D/g, "");
   return {
     issuer,
     nickname,
@@ -213,6 +205,16 @@ function createLocalBackend() {
       }));
       return user;
     },
+    async getAuthHeaders() {
+      try {
+        const raw = localStorage.getItem(LOCAL_SESSION_KEY);
+        const s = raw ? JSON.parse(raw) : null;
+        if (!s || !s.token || !s.exp || s.exp < Date.now()) return {};
+        return { Authorization: `Bearer ${s.token}` };
+      } catch (_) {
+        return {};
+      }
+    },
     async restoreSession() {
       try {
         const raw = localStorage.getItem(LOCAL_SESSION_KEY);
@@ -264,8 +266,9 @@ function createLocalBackend() {
       return api("POST", "/api/open", { station, slot, studentId, action });
     },
     async savePaymentMethod(method) {
+      const issue = paymentMethodIssue(method);
+      if (issue) throw new Error(issue);
       const pay = paymentMethodView(method);
-      if (!pay) throw new Error("카드 정보를 다시 확인해 주세요.");
       const raw = localStorage.getItem(LOCAL_SESSION_KEY);
       const s = raw ? JSON.parse(raw) : null;
       if (!s || !s.token) throw new Error("로그인이 필요해요.");
@@ -547,8 +550,10 @@ function createFirebaseBackend() {
     },
 
     async savePaymentMethod(method) {
-      const pay = paymentMethodView({ ...method, registeredAt: Date.now() });
-      if (!pay) throw new Error("카드 정보를 다시 확인해 주세요.");
+      const draft = { ...method, registeredAt: Date.now() };
+      const issue = paymentMethodIssue(draft);
+      if (issue) throw new Error(issue);
+      const pay = paymentMethodView(draft);
       const user = requireUser();
       await updateDoc(doc(db, "students", user.uid), {
         paymentMethod: pay,

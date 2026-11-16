@@ -5,6 +5,7 @@
 const { verifySsuStudent } = require("./lib/ssu-verify.cjs");
 const express = require("express");
 const crypto = require("crypto");
+const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { DatabaseSync } = require("node:sqlite");
@@ -214,14 +215,16 @@ const assertSlot = (res, slot) => {
 };
 const rentalView = (r) =>
   r && { rentalId: r.id, station: r.station, slot: r.slot, rented_at: r.rented_at, due_at: r.due_at };
-const CARD_ISSUERS = [
-  "신한카드", "삼성카드", "현대카드", "KB국민카드", "롯데카드", "우리카드", "하나카드",
-  "NH농협카드", "BC카드", "씨티카드", "카카오뱅크", "토스뱅크", "케이뱅크", "IBK기업은행",
-  "수협은행", "새마을금고", "우체국", "광주은행", "전북은행", "제주은행",
-];
+function loadCardIssuers() {
+  const src = fs.readFileSync(path.join(__dirname, "public/js/card-issuers.js"), "utf8");
+  const list = JSON.parse(src.slice(src.indexOf("["), src.lastIndexOf("]") + 1));
+  if (!Array.isArray(list) || !list.length) throw new Error("카드사 목록을 읽지 못했어요.");
+  return list;
+}
+const CARD_ISSUERS = loadCardIssuers();
 function normalizePayment(body) {
   const issuer = String((body && (body.issuer || body.brand)) || "").trim();
-  const nickname = String((body && body.nickname) || "").trim();
+  const nickname = String((body && body.nickname) || "").trim() || issuer;
   const number = String((body && body.number) || "").replace(/\D/g, "");
   const expiry = String((body && body.expiry) || "").replace(/\D/g, "");
   const cvc = String((body && body.cvc) || "").replace(/\D/g, "");
@@ -290,6 +293,10 @@ const verifyAttempts = new Map();
 app.post("/api/verify-student", async (req, res) => {
   const studentId = String((req.body && req.body.studentId) || "").trim();
   const password = String((req.body && req.body.password) || "");
+  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  const session = sessions.get(token);
+  if (!session || session.exp < Date.now()) return bad(res, "로그인이 필요해요.", 401);
+  if (session.id !== studentId) return bad(res, "로그인한 학번으로만 인증할 수 있어요.", 403);
   const now = Date.now();
   const prev = verifyAttempts.get(studentId) || [];
   const recent = prev.filter((t) => now - t < 10 * 60 * 1000);

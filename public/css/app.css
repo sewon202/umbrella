@@ -2171,24 +2171,29 @@ body.code-open main {
 .pg-card {
   position: relative;
   overflow: hidden;
-  border-radius: 18px;
-  min-height: 176px;
-  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 93%;
+  margin-inline: auto;
+  aspect-ratio: 1.7;
+  border-radius: 4.6% / 7.2%;
+  padding: 5.4% 6% 5%;
   color: #fff;
   background:
     radial-gradient(90% 80% at 100% 0%, rgba(255, 255, 255, 0.22), transparent 46%),
     linear-gradient(145deg, #1496BE 0%, #07556C 46%, #062E3C 100%);
-  box-shadow: 0 18px 36px rgba(6, 46, 60, 0.28);
 }
 .pg-card::after {
   content: "";
   position: absolute;
-  right: -30px;
-  bottom: -46px;
-  width: 140px;
-  height: 140px;
+  right: -18%;
+  bottom: -28%;
+  width: 58%;
+  height: 70%;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 68%);
 }
 .pg-card-top,
 .pg-card-bot {
@@ -2220,10 +2225,11 @@ body.code-open main {
 .pg-chip {
   position: relative;
   z-index: 1;
-  width: 36px;
-  height: 26px;
-  margin: 18px 0 14px;
-  border-radius: 6px;
+  width: 13%;
+  height: auto;
+  aspect-ratio: 1.38 / 1;
+  margin: 5% 0 4%;
+  border-radius: 12%;
   background:
     linear-gradient(#E7C98A, #E7C98A) 0 8px / 100% 1px no-repeat,
     linear-gradient(#E7C98A, #E7C98A) 0 16px / 100% 1px no-repeat,
@@ -2232,8 +2238,8 @@ body.code-open main {
 .pg-pan {
   position: relative;
   z-index: 1;
-  margin: 0 0 16px;
-  font-size: 18px;
+  margin: 0;
+  font-size: clamp(16px, 4.6vw, 22px);
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -2245,13 +2251,14 @@ body.code-open main {
   font-weight: 800;
   letter-spacing: 0.12em;
 }
+.pg-card-bot { margin-top: auto; }
 .pg-card-bot strong {
   display: block;
-  max-width: 96px;
+  max-width: 9em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: clamp(12px, 3.4vw, 15px);
   font-weight: 800;
 }
 .pg-issuers {
@@ -2289,13 +2296,27 @@ body.code-open main {
 }
 .pg-row {
   display: flex;
+  align-items: stretch;
   gap: 10px;
 }
-.pg-row .pg-field { flex: 1; min-width: 0; }
+.pg-row .pg-field { flex: 1; min-width: 0; justify-content: flex-end; }
+.pg-opt { font-weight: 700; }
+#v-pay.view.on { overflow-y: auto; }
+#v-pay .top-nav { margin-bottom: 6px; }
+#v-pay .pg-kicker { margin-bottom: 0; }
+#v-pay .pg-title { margin-bottom: 2px; font-size: 20px; }
+#v-pay .pg-lead { margin-bottom: 6px; font-size: 12px; }
+#v-pay .pg-form { gap: 16px; margin-top: 14px; }
+#v-pay .pg-field { gap: 4px; }
+#v-pay .pg-field input { padding: 8px 10px; }
+#v-pay .pg-pay-btn { margin-top: -6px; padding: 11px 14px; }
+#v-pay .pg-form .err:empty { min-height: 0; }
+#v-pay .pg-issuers { padding-bottom: 2px; }
+#v-pay .pg-fine { margin-top: 2px; }
 .pg-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   margin-top: 18px;
 }
 .pg-form-tight { margin-top: 14px; }
@@ -2303,10 +2324,10 @@ body.code-open main {
 .pg-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .pg-field span {
-  color: var(--muted);
+  color: #3d4c5c;
   font-size: 12px;
   font-weight: 800;
 }
@@ -2384,5 +2405,4 @@ body.code-open main {
   letter-spacing: -0.05em;
 }
 .pay-checkout .pg-sub { margin-bottom: 14px; }
-.pay-checkout .pg-card { min-height: 150px; }
-.pay-checkout .pg-chip { margin: 12px 0 10px; }
+.pay-checkout .pg-form { gap: 16px; }

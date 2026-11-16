@@ -29,7 +29,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=95">
+<link rel="stylesheet" href="/css/app.css?v=101">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -321,12 +321,11 @@
   <div class="vt-stagger" data-stagger="1">
     <p class="pg-kicker">UMBRELLA PAY</p>
     <h1 class="pg-title">결제수단</h1>
-    <p class="pg-lead">연체료 모의 결제에 쓸 카드예요. 승인이나 실제 청구는 없어요.</p>
+    <p class="pg-lead">결제에 사용할 카드를 등록해 주세요.</p>
   </div>
   <div class="pg-card vt-stagger" data-stagger="2" aria-hidden="true">
     <div class="pg-card-top">
       <span class="pg-word">UMBRELLA</span>
-      <span class="pg-pill">MOCK</span>
     </div>
     <div class="pg-chip" aria-hidden="true"></div>
     <p class="pg-pan" id="payCardPan">••••&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;••••</p>
@@ -352,27 +351,29 @@
       <input id="payIssuer" type="hidden" value="">
     </div>
     <label class="pg-field">
-      <span>카드 별명</span>
-      <input id="payNickname" type="text" maxlength="20" autocomplete="off" placeholder="예: 생활비">
-    </label>
-    <label class="pg-field">
       <span>카드 번호</span>
       <input id="payNumber" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="1234 5678 9012 3456">
     </label>
     <div class="pg-row">
       <label class="pg-field">
+        <span>카드 별명 <span class="pg-opt">(선택)</span></span>
+        <input id="payNickname" type="text" maxlength="20" autocomplete="off">
+      </label>
+      <label class="pg-field">
         <span>유효기간</span>
         <input id="payExpiry" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/YY">
       </label>
+    </div>
+    <div class="pg-row">
       <label class="pg-field">
         <span>CVC</span>
         <input id="payCvc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
       </label>
+      <label class="pg-field">
+        <span>비밀번호 끝 2자리</span>
+        <input id="payPw2" type="password" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="••">
+      </label>
     </div>
-    <label class="pg-field">
-      <span>비밀번호 끝 2자리</span>
-      <input id="payPw2" type="password" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="••">
-    </label>
     <p class="err" id="payErr"></p>
     <button class="pg-pay-btn" id="paySubmit" type="submit">등록하기</button>
     <p class="pg-fine">CVC와 비밀번호는 카드에 표시하지 않아요.</p>
@@ -554,27 +555,29 @@
         <input id="payOverlayIssuer" type="hidden" value="">
       </div>
       <label class="pg-field">
-        <span>카드 별명</span>
-        <input id="payOverlayNickname" type="text" maxlength="20" autocomplete="off" placeholder="예: 생활비">
-      </label>
-      <label class="pg-field">
         <span>카드 번호</span>
         <input id="payOverlayNumber" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="1234 5678 9012 3456">
       </label>
       <div class="pg-row">
         <label class="pg-field">
+          <span>카드 별명 <span class="pg-opt">(선택)</span></span>
+          <input id="payOverlayNickname" type="text" maxlength="20" autocomplete="off">
+        </label>
+        <label class="pg-field">
           <span>유효기간</span>
           <input id="payOverlayExpiry" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/YY">
         </label>
+      </div>
+      <div class="pg-row">
         <label class="pg-field">
           <span>CVC</span>
           <input id="payOverlayCvc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
         </label>
+        <label class="pg-field">
+          <span>비밀번호 끝 2자리</span>
+          <input id="payOverlayPw2" type="password" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="••">
+        </label>
       </div>
-      <label class="pg-field">
-        <span>비밀번호 끝 2자리</span>
-        <input id="payOverlayPw2" type="password" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="••">
-      </label>
     </form>
     <p class="err" id="payOverlayErr"></p>
     <button class="pg-pay-btn" id="payOverlaySubmit" type="button">결제하기</button>
@@ -583,6 +586,6 @@
 </div>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=109"></script>
+<script type="module" src="/js/app.js?v=115"></script>
 </body>
 </html>
