@@ -1,14 +1,14 @@
 ---
-description: Always push commits to both sewon and youjune remotes
+description: Always push commits to both origin (youjune) and sewon remotes
 alwaysApply: true
 ---
 
-# Dual remotes — sewon + youjune
+# Dual remotes — youjune (origin) + sewon
 
 When the user asks to commit and/or push this repo:
 
-- Remotes: `origin` = `https://github.com/sewon202/umbrella.git`, `youjune` = `https://github.com/youjune2005/umbrella.git`.
-- After a successful local commit, push the same branch to **both** `origin` and `youjune` unless the user explicitly asks for only one.
-- Keep `main` tracking `origin/main` (do not leave upstream on `youjune` after `git push -u youjune`).
+- Remotes: `origin` = `https://github.com/youjune2005/umbrella.git`, `sewon` = `https://github.com/sewon202/umbrella.git`.
+- After a successful local commit, push the same branch to **both** `origin` and `sewon` unless the user explicitly asks for only one.
+- Keep `main` tracking `origin/main` (do not leave upstream on `sewon` after `git push -u sewon`).
 - Do not commit `umbrella.db`.
 - Still follow authorship rules: Youjune Park only; never Cursor `Co-authored-by`.
