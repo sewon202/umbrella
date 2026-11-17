@@ -23,8 +23,9 @@ import {
   paymentMethodLabel,
   CARD_ISSUERS,
   STATIONS,
-} from "/js/backend.js?v=116";
-import { startQrScan, stopQrScan, setScanCooldown, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=49";
+} from "/js/backend.js?v=117";
+import { startQrScan, stopQrScan, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=59";
+import { createDoorSync } from "/js/door-sync.js?v=2";
 import {
   initCampusMap,
   selectStation,
@@ -47,9 +48,7 @@ import {
 initUiScale();
 
 function applyUser(res) {
-  const rental = res.activeRental
-    ? { ...res.activeRental, due_at: Date.now() + RENT_LIMIT_MS }
-    : null;
+  const rental = res.activeRental ? keptRental(res.activeRental) : null;
   const wallet = paymentWallet(res);
   state.user = {
     id: res.studentId,
@@ -61,6 +60,19 @@ function applyUser(res) {
     paymentMethods: wallet.paymentMethods,
     defaultPaymentId: wallet.defaultPaymentId,
     paymentMethod: wallet.paymentMethod,
+  };
+}
+
+/** 로그인·새로고침은 서버에 남은 대여 기한을 그대로 쓴다. */
+function keptRental(rental) {
+  const rentedAt = Number(rental.rented_at);
+  const due = Number(rental.due_at);
+  return {
+    ...rental,
+    rented_at: Number.isFinite(rentedAt) ? rentedAt : null,
+    due_at: Number.isFinite(due)
+      ? due
+      : (Number.isFinite(rentedAt) ? rentedAt + RENT_LIMIT_MS : null),
   };
 }
 
@@ -76,8 +88,14 @@ const STATION_BY_KEY = (() => {
 const STATION_QR = Object.fromEntries(STATIONS.map((s) => [s.code, s.qr || s.code]));
 const $ = (id) => document.getElementById(id);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const DOOR_MS = 1400;
-const QR_CONFIRM_HITS = 3; // 같은 코드가 연속 인식돼야 확정
+const doorSync = createDoorSync(localStorage);
+/** 서보 0→90도에 대응하는 화면 각도. 진행률은 모터와 같이 직선이다. */
+const DOOR_TURN = -70;
+let activeMotion = null;
+/** 같은 대여소 QR이 이 횟수만큼 연속으로 읽혀야 넘어간다. */
+const QR_CONFIRM_HITS = 2;
+/** 같은 잘못된 QR을 붙잡고 있을 때 경고가 너무 빨리 겹치지 않게만 한다. 스캔은 멈추지 않는다. */
+const INVALID_TOAST_GAP_MS = 700;
 /** 보드 자동닫힘 대기 (아두이노 OPEN_MAX ≈ 25s + 여유) */
 const DOOR_SENSOR_TIMEOUT_MS = 45000;
 
@@ -117,7 +135,9 @@ function readStationFromHash() {
  * 인쇄용 고유번호(A1234…)와 내부 코드 모두 허용. 짧은 우연 매칭은 막음.
  */
 function parseStationCode(raw) {
-  const text = String(raw || "").trim();
+  const text = String(raw || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
   if (!text) return null;
   const upper = text.toUpperCase().replace(/\s+/g, "");
 
@@ -222,7 +242,6 @@ const NAV_DEPTH = {
   "v-qr": 20,
   "v-map": 20,
   "v-code": 21,
-  "v-place": 30,
   "v-pick": 31,
   "v-return-done": 40,
 };
@@ -358,8 +377,19 @@ function finishShow(id) {
  * - 탭·로그인·지도: 10% 슬라이드 + fade (≈200ms)
  * - 보관함 스택: 짧은 push/pop
  */
+function closeVerifyForm() {
+  const form = $("verifyForm");
+  if (!form) return;
+  form.hidden = true;
+  const pw = $("verifyPw");
+  const err = $("verifyErr");
+  if (pw) pw.value = "";
+  if (err) err.textContent = "";
+}
+
 function show(id, { tab, dir, instant } = {}) {
   if (state.paying && id !== "v-pick" && id !== "v-return-done") return Promise.resolve();
+  if (id !== "v-settings") closeVerifyForm();
   const to = $(id);
   if (!to) return Promise.resolve();
 
@@ -440,7 +470,9 @@ function show(id, { tab, dir, instant } = {}) {
           cleanup();
         };
         to.addEventListener("animationend", onEnd);
-        navCleanupTimer = setTimeout(cleanup, keys.ms);
+        const payStagger = id === "v-pay" || id === "v-pay-list";
+        const cleanupMs = payStagger && (navDir === "tab-right" || navDir === "tab-left") ? 1560 : keys.ms;
+        navCleanupTimer = setTimeout(cleanup, cleanupMs);
       });
     });
   });
@@ -457,8 +489,12 @@ function syncUserChrome() {
   $("setSid").textContent = state.user.id;
   renderVerifyState();
   renderPayState();
-  $("placeName").textContent = STATION_NAMES[state.station] || state.station;
-  $("placeCode").textContent = `대여소 코드 ${STATION_QR[state.station] || state.station}`;
+  const place = STATION_NAMES[state.station] || state.station;
+  const code = STATION_QR[state.station] || state.station;
+  const placeEl = $("pickPlace");
+  const codeEl = $("pickPlaceCode");
+  if (placeEl) placeEl.textContent = place;
+  if (codeEl) codeEl.textContent = `대여소 코드 ${code}`;
 
   const renting = !!(state.user.activeRental);
   const btn = $("homeRentBtn");
@@ -489,7 +525,11 @@ async function refreshInventory() {
 async function enterStation(code) {
   const station = parseStationCode(code);
   if (!station) {
-    $("placeErr").textContent = "알 수 없는 대여소 코드예요.";
+    if ($("v-code").classList.contains("on")) {
+      $("codeErr").textContent = "알 수 없는 대여소 코드예요.";
+    } else {
+      showQrToast("알 수 없는 대여소 코드예요.");
+    }
     return;
   }
   state.station = station;
@@ -499,11 +539,12 @@ async function enterStation(code) {
   state.returning = false;
   state.busy = false;
   syncPickActions();
-  $("placeErr").textContent = "";
+  setMsg("");
   syncUserChrome();
-  try { await refreshInventory(); } catch (_) {}
+  try { await refreshInventory(); } catch (e) { setMsg(friendlyError(e)); }
   tick();
-  show("v-place");
+  render();
+  show("v-pick");
 }
 
 function cleanStudentId(value) {
@@ -689,7 +730,7 @@ function listenForDoor(station, onRows) {
   }
 }
 
-function waitForMatching(station, slot, sinceMs, commandId, match, timeoutMs) {
+function waitForMatching(station, slot, sinceMs, commandId, match, timeoutMs, onBatch) {
   return new Promise((resolve) => {
     let settled = false;
     let stop = () => {};
@@ -702,6 +743,7 @@ function waitForMatching(station, slot, sinceMs, commandId, match, timeoutMs) {
     };
     const timer = setTimeout(() => finish(null), timeoutMs);
     stop = listenForDoor(station, (rows) => {
+      if (typeof onBatch === "function") onBatch(rows);
       const ev = pickMatchingEvent(rows, { station, slot, since: sinceMs, commandId, match });
       if (ev) finish(ev);
     });
@@ -718,11 +760,11 @@ function waitForServoStart(station, slot, sinceMs, commandId, action) {
 }
 
 /** 대여: 이번 commandId 의 닫힘만 인정. 타임아웃 이벤트는 성공이 아니다. */
-function waitForRentDoorClose(station, slot, sinceMs, commandId) {
-  return waitForMatching(station, slot, sinceMs, commandId, isRentDoorSettled, DOOR_SENSOR_TIMEOUT_MS)
+function waitForRentDoorClose(station, slot, sinceMs, commandId, onBatch) {
+  return waitForMatching(station, slot, sinceMs, commandId, isRentDoorSettled, DOOR_SENSOR_TIMEOUT_MS, onBatch)
     .then((ev) => {
-      if (!ev) return "unknown";
-      return isRentDoorTimeout(ev) ? "timeout" : "sensor";
+      if (!ev) return { how: "unknown", ev: null };
+      return { how: isRentDoorTimeout(ev) ? "timeout" : "sensor", ev };
     });
 }
 
@@ -730,22 +772,23 @@ function waitForRentDoorClose(station, slot, sinceMs, commandId) {
  * 반납: RFID+IR 인식(return_ok) 후 보드 자동닫힘(auto_close_return)까지 대기.
  * 수동 「우산을 넣었어요」는 보드 없이 닫기 위한 폴백.
  */
-function waitForReturnDoorClose(station, slot, sinceMs, commandId) {
+function waitForReturnDoorClose(station, slot, sinceMs, commandId, onBatch) {
   return new Promise((resolve) => {
     let settled = false;
     let sawReturnOk = false;
     let stop = () => {};
-    const finish = (how) => {
+    const finish = (how, ev) => {
       if (settled) return;
       settled = true;
       returnWaitResolve = null;
       clearTimeout(timer);
       try { stop(); } catch (_) { /* ignore */ }
-      resolve(how);
+      resolve({ how, ev: ev || null });
     };
-    returnWaitResolve = () => finish("manual");
-    const timer = setTimeout(() => finish("unknown"), DOOR_SENSOR_TIMEOUT_MS);
+    returnWaitResolve = () => finish("manual", null);
+    const timer = setTimeout(() => finish("unknown", null), DOOR_SENSOR_TIMEOUT_MS);
     stop = listenForDoor(station, (rows) => {
+      if (typeof onBatch === "function") onBatch(rows);
       if (!sawReturnOk && pickMatchingEvent(rows, {
         station, slot, since: sinceMs, commandId, match: isReturnDetected,
       })) {
@@ -756,13 +799,107 @@ function waitForReturnDoorClose(station, slot, sinceMs, commandId) {
         station, slot, since: sinceMs, commandId, match: isReturnDoorSettled,
       });
       if (!closed) return;
-      finish(isReturnDoorTimeout(closed) ? "timeout" : "sensor");
+      finish(isReturnDoorTimeout(closed) ? "timeout" : "sensor", closed);
     });
   });
 }
 
-/** DOM 유지 + CSS transition 으로 자연스럽게 열기 */
-async function playDoorOpen(slot) {
+function servoAction(row) {
+  return String((row && row.payload && row.payload.action) || "");
+}
+
+/** 이미 구독 중인 이벤트에서만 연다. 보정용 통신을 따로 열지 않는다. */
+function applyLead(rows, note) {
+  if (!note) return;
+  const ev = pickMatchingEvent(rows, {
+    station: note.station,
+    slot: note.slot,
+    commandId: note.commandId,
+    match: (row) => row && row.kind === "servo" && (servoAction(row) === "open" || servoAction(row) === "open_return"),
+  });
+  if (!ev) return;
+  const next = doorSync.observe(ev, {
+    recvAt: Date.now(),
+    offset: note.offset,
+    rtt: note.rtt,
+    commandAt: note.commandAt,
+    commandId: note.commandId,
+    role: "lead",
+  });
+  if (next && activeMotion) activeMotion.retarget(next);
+}
+
+/** 서보와 같은 속도로 그린다. 모터보다 앞서 있으면 늦추지 않고, 뒤처지면 앞으로 당긴다. */
+function trackDoor(el, fromDeg, toDeg, plan) {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.classList.add("is-synced");
+  el.classList.remove("opening", "closing", "open");
+  el.style.transition = "none";
+  let startAt = plan.startAt;
+  let moveMs = Math.max(1, plan.moveMs || 1);
+  let finished = false;
+  const at = (now) => Math.max(0, Math.min(1, (now - startAt) / moveMs));
+  const apply = (p) => {
+    el.style.transform = `rotateY(${fromDeg + (toDeg - fromDeg) * p}deg)`;
+  };
+  const retarget = (next) => {
+    if (!next || finished) return;
+    const now = Date.now();
+    const nextMove = Math.max(1, next.moveMs || moveMs);
+    const motorP = Math.max(0, Math.min(1, (now - next.startAt) / nextMove));
+    if (motorP + 0.02 < at(now)) return;
+    startAt = next.startAt;
+    moveMs = nextMove;
+  };
+  const done = new Promise((resolve) => {
+    if (reduce || at(Date.now()) >= 1) {
+      apply(1);
+      finished = true;
+      resolve();
+      return;
+    }
+    const frame = () => {
+      if (finished) return;
+      const p = at(Date.now());
+      apply(p);
+      if (p >= 0.999) {
+        apply(1);
+        finished = true;
+        resolve();
+        return;
+      }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  return { done, retarget };
+}
+
+function settleDoor(el, open) {
+  if (!el) return;
+  el.classList.remove("is-synced", "opening", "closing");
+  el.style.transition = "none";
+  el.style.transform = "";
+  el.classList.toggle("open", !!open);
+  requestAnimationFrame(() => {
+    if (el.isConnected) el.style.transition = "";
+  });
+}
+
+function motionNote(res, sentAt) {
+  const note = doorSync.noteRoundTrip({
+    sentAt,
+    recvAt: Date.now(),
+    serverNow: res && res.serverNow,
+    commandAt: res && res.commandAt,
+  });
+  note.station = state.station;
+  note.slot = state.selected;
+  note.commandId = res && res.id != null ? String(res.id) : "";
+  return note;
+}
+
+async function playDoorOpen(slot, note) {
   state.openSlot = slot;
   let el = doorEl(slot);
   if (!el) {
@@ -770,30 +907,38 @@ async function playDoorOpen(slot) {
     el = doorEl(slot);
   }
   if (!el) return;
-  el.classList.remove("closing", "open", "opening");
-  el.style.transitionDuration = `${DOOR_MS}ms`;
-  void el.offsetWidth;
-  el.classList.add("opening", "open");
-  await wait(DOOR_MS);
-  el.classList.remove("opening");
+  const plan = note ? doorSync.planLead(note) : doorSync.planFollow(Date.now());
+  const motion = trackDoor(el, 0, DOOR_TURN, plan);
+  activeMotion = motion;
+  try {
+    await motion.done;
+  } finally {
+    if (activeMotion === motion) activeMotion = null;
+    settleDoor(el, true);
+  }
 }
 
-/** 열린 상태에서 같은 요소로 닫기. 서보와 같이 약 1.3초. */
-async function playDoorClose(slot) {
+async function playDoorClose(slot, ev, note) {
   const el = doorEl(slot);
   if (!el) {
     state.openSlot = null;
     return;
   }
-  el.classList.remove("opening");
-  el.classList.add("open");
-  el.style.transitionDuration = `${DOOR_MS}ms`;
-  void el.offsetWidth;
-  el.classList.add("closing");
-  el.classList.remove("open");
-  await wait(DOOR_MS);
-  el.classList.remove("closing");
-  state.openSlot = null;
+  const ctx = {
+    recvAt: Date.now(),
+    offset: note && note.offset,
+    rtt: note && note.rtt,
+    commandId: note && note.commandId,
+    role: "follow",
+  };
+  const plan = ev ? (doorSync.observe(ev, ctx) || doorSync.planFollow(Date.now())) : doorSync.planFollow(Date.now());
+  const motion = trackDoor(el, DOOR_TURN, 0, plan);
+  try {
+    await motion.done;
+  } finally {
+    settleDoor(el, false);
+    state.openSlot = null;
+  }
 }
 
 async function go() {
@@ -817,22 +962,24 @@ async function go() {
       const openedAt = Date.now();
       const rentalSnap = state.user.activeRental;
       const ret = await returnUmbrella(params);
+      const note = motionNote(ret, openedAt);
       const cmdId = ret && ret.id;
       state.returning = true;
       state.busy = false;
       syncPickActions();
       setMsg(`${slot}번 문을 열어요. 우산을 걸어 넣어 주세요.`);
-      const closePromise = waitForReturnDoorClose(state.station, slot, openedAt, cmdId);
-      await playDoorOpen(slot);
+      const closePromise = waitForReturnDoorClose(state.station, slot, openedAt, cmdId, (rows) => applyLead(rows, note));
+      await playDoorOpen(slot, note);
       render();
 
-      const how = await closePromise;
+      const closed = await closePromise;
+      const how = closed.how;
       if (how === "sensor") setMsg("문이 닫히는 중이에요…");
       else if (how === "manual") setMsg("확인됐어요. 문을 닫을게요.");
       else if (how === "timeout") setMsg("시간 안에 반납이 확인되지 않아 문이 닫혔어요. 반납 기록은 남아 있어요.");
       else setMsg("보드가 반납 완료를 확인하지 못했어요. 반납 기록은 남아 있어요.");
 
-      if (how === "sensor" || how === "manual") await playDoorClose(slot);
+      if (how === "sensor" || how === "manual") await playDoorClose(slot, closed.ev, note);
       state.returning = false;
       syncPickActions();
       state.busy = false;
@@ -867,22 +1014,25 @@ async function go() {
       }
       returnUiDone = true;
     } else {
+      const sentAt = Date.now();
       const r = await rentUmbrella(params);
+      const note = motionNote(r, sentAt);
       state.user.activeRental = {
         rentalId: r.rentalId, station: state.station, slot,
         rented_at: r.rented_at, due_at: r.due_at,
       };
-      const openedAt = Date.now();
+      const openedAt = sentAt;
       const cmdId = r && r.id;
       setMsg(`${slot}번 문을 열어요. 우산을 꺼내 주세요.`);
       render();
-      const closePromise = waitForRentDoorClose(state.station, slot, openedAt, cmdId);
-      await playDoorOpen(slot);
+      const closePromise = waitForRentDoorClose(state.station, slot, openedAt, cmdId, (rows) => applyLead(rows, note));
+      await playDoorOpen(slot, note);
 
-      const how = await closePromise;
+      const closed = await closePromise;
+      const how = closed.how;
       if (how === "sensor") setMsg("우산을 꺼냈어요. 문이 닫히는 중이에요…");
 
-      if (how === "sensor") await playDoorClose(slot);
+      if (how === "sensor") await playDoorClose(slot, closed.ev, note);
       await refreshInventory();
       state.busy = false;
       state.selected = null;
@@ -1084,10 +1234,10 @@ function renderPayList() {
   const box = $("payList");
   if (!box || !state.user) return;
   const methods = sortedPaymentMethods();
-  box.innerHTML = methods.map((item) => {
+  box.innerHTML = methods.map((item, index) => {
     const on = item.id === state.user.defaultPaymentId;
     const sub = item.nickname && item.nickname !== item.issuer ? item.issuer : "";
-    return `<div class="pay-swipe" data-id="${payText(item.id)}">
+    return `<div class="pay-swipe vt-stagger" data-stagger="${index + 2}" data-id="${payText(item.id)}">
       <button type="button" class="pay-swipe-delete" tabindex="-1" aria-label="삭제">
         <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3.5h6l.7 1.5H20v2H4v-2h4.3L9 3.5zM6.2 9h11.6l-.7 11.1A2 2 0 0 1 15.1 22H8.9a2 2 0 0 1-2-1.9L6.2 9z"/></svg>
       </button>
@@ -1100,6 +1250,8 @@ function renderPayList() {
       </button>
     </div>`;
   }).join("");
+  const add = $("payAdd");
+  if (add) add.dataset.stagger = String(methods.length + 2);
   closePaySwipes(box);
 }
 
@@ -1445,13 +1597,16 @@ function tick() {
   });
   syncTimerSlot("pickTimerSlot", "pickTimer", !!(r && $("pickTimer") && !$("pickTimer").hidden));
   syncTimerSlot("homeTimerSlot", "homeTimer", !!(r && $("homeTimer") && !$("homeTimer").hidden));
-  syncTimerSlot("placeTimerSlot", "placeTimer", !!(r && $("placeTimer") && !$("placeTimer").hidden));
 }
 
 let qrToastTimer = null;
 let qrHandling = false;
+let qrBusy = false;
+let qrSession = 0;
 let qrConfirmKey = null;
 let qrConfirmCount = 0;
+let lastInvalidRaw = "";
+let lastInvalidToastAt = 0;
 
 function setQrHint(text) {
   const el = $("qrHint");
@@ -1475,14 +1630,23 @@ function hideQrToast() {
   t.classList.remove("show", "shake");
 }
 
-function showQrToast(message) {
+function vibrateScanError() {
+  try {
+    if (typeof navigator.vibrate === "function") navigator.vibrate([30, 40, 50]);
+  } catch (_) {}
+}
+
+function showQrToast(message, { vibrate = false } = {}) {
   const t = $("qrToast");
   const msg = $("qrToastMsg");
   if (!t || !msg) return;
   msg.textContent = message;
-  t.classList.remove("shake", "show");
+  t.hidden = false;
+  t.classList.remove("show", "shake");
   void t.offsetWidth;
-  t.classList.add("show", "shake");
+  t.classList.add("show");
+  if (vibrate) vibrateScanError();
+  requestAnimationFrame(() => t.classList.add("shake"));
   if (qrToastTimer) clearTimeout(qrToastTimer);
   qrToastTimer = setTimeout(() => {
     t.classList.remove("show", "shake");
@@ -1492,6 +1656,17 @@ function showQrToast(message) {
 function resetQrConfirm() {
   qrConfirmKey = null;
   qrConfirmCount = 0;
+  lastInvalidRaw = "";
+  lastInvalidToastAt = 0;
+}
+
+function showInvalidQr(message, raw, { vibrate = false } = {}) {
+  const now = Date.now();
+  if (raw === lastInvalidRaw && now - lastInvalidToastAt < INVALID_TOAST_GAP_MS) return;
+  lastInvalidRaw = raw;
+  lastInvalidToastAt = now;
+  showQrToast(message, { vibrate });
+  setQrHint("올바른 대여소 QR인지 확인해 주세요");
 }
 
 function hideQrSuccess() {
@@ -1513,11 +1688,20 @@ async function showQrSuccess(station) {
     void box.offsetWidth;
     box.classList.add("is-on");
   }
-  await wait(850);
+  await wait(640);
   hideQrSuccess();
 }
 
-async function openQrCamera() {
+function cameraIsLive() {
+  const video = $("qrVideo");
+  return $("v-qr").classList.contains("on")
+    && !navBusy
+    && $("qrFrame").classList.contains("ready")
+    && !!(video && video.srcObject);
+}
+
+async function openQrCamera({ session = ++qrSession, whenStable = null, force = false } = {}) {
+  if (!force && cameraIsLive()) return;
   hideQrToast();
   hideQrSuccess();
   resetQrConfirm();
@@ -1528,28 +1712,48 @@ async function openQrCamera() {
   syncTorchButton();
 
   const res = await startQrScan({
-    video: $("qrVideo"),
+    whenStable,
     onResult: handleQrPayload,
     onError: (msg) => {
+      if (session !== qrSession) return;
       setQrHint(msg);
       $("qrFrame").classList.add("denied");
       $("qrRetryCam").hidden = false;
       showQrToast(msg);
     },
   });
+  if (session !== qrSession) return;
+  if (!$("v-qr").classList.contains("on")) {
+    stopQrScan();
+    return;
+  }
   if (res.ok) {
-    // cover 픽셀 고정이 끝난 뒤에만 노출 (작게→확대 플래시 방지)
-    fitQrVideoCover($("qrVideo"), $("qrFrame"));
-    $("qrVideo").classList.add("is-fitted");
+    const video = $("qrVideo");
+    fitQrVideoCover(video, $("qrFrame"));
+    if (video) video.classList.add("is-fitted");
     $("qrFrame").classList.add("ready");
     setQrHint("대여소 QR을 네모 안에 맞춰 주세요");
   }
   syncTorchButton();
 }
 
+function presentQr({ instant = false } = {}) {
+  if (cameraIsLive()) return;
+  if (qrBusy) return;
+  qrBusy = true;
+  const session = ++qrSession;
+  hideMapSheet();
+  const shown = Promise.resolve(show("v-qr", { tab: "qr", instant }));
+  openQrCamera({ session, whenStable: shown }).finally(() => {
+    if (session === qrSession) qrBusy = false;
+  });
+}
+
 async function closeQrCamera() {
-  qrHandling = false;
+  qrSession += 1;
+  qrBusy = false;
   resetQrConfirm();
+  $("qrFrame").classList.remove("ready", "denied");
   await stopQrScan();
   hideQrToast();
   hideQrSuccess();
@@ -1563,21 +1767,15 @@ async function handleQrPayload(hit) {
 
   const format = String((hit && hit.format) || "").toLowerCase();
   if (format && format !== "qr_code") {
-    resetQrConfirm();
-    setScanCooldown(1400);
-    showQrToast("QR 코드만 인식할 수 있어요");
+    showInvalidQr("QR 코드만 인식할 수 있어요", raw);
     setQrHint("대여소 QR을 다시 비춰 주세요");
     return;
   }
 
   const station = parseStationCode(raw);
   if (!station) {
-    resetQrConfirm();
-    // 짧은 잡음/미완성 디코드는 무시, 의미 있는 페이로드만 에러
     if (raw.replace(/\s+/g, "").length >= 4) {
-      setScanCooldown(1600);
-      showQrToast("등록되지 않은 보관함이에요");
-      setQrHint("올바른 대여소 QR인지 확인해 주세요");
+      showInvalidQr("등록되지 않은 보관함이에요", raw, { vibrate: true });
     }
     return;
   }
@@ -1585,17 +1783,16 @@ async function handleQrPayload(hit) {
   if (qrConfirmKey !== station) {
     qrConfirmKey = station;
     qrConfirmCount = 1;
-    setQrHint("인식 중… 조금 더 맞춰 주세요");
+    setQrHint("인식 중…");
     return;
   }
   qrConfirmCount += 1;
   if (qrConfirmCount < QR_CONFIRM_HITS) {
-    setQrHint(`확인 중… (${qrConfirmCount}/${QR_CONFIRM_HITS})`);
+    setQrHint("인식 중…");
     return;
   }
 
   qrHandling = true;
-  setScanCooldown(5000);
   hideQrToast();
   setQrHint("인식 완료");
   try {
@@ -1765,9 +1962,7 @@ function goTab(tab) {
     // 서버 activeRental 재확인 (로컬 state와 어긋난 경우 보정)
     refreshInventory().catch(() => {});
   } else if (tab === "qr") {
-    hideMapSheet();
-    show("v-qr", { tab: "qr" });
-    openQrCamera();
+    presentQr();
   } else if (tab === "settings") {
     closeQrCamera();
     hideMapSheet();
@@ -1923,7 +2118,10 @@ $("mapGoRent").onclick = () => {
   goTab("qr");
 };
 $("qrBack").onclick = () => goTab("home");
-$("qrRetryCam").onclick = () => openQrCamera();
+$("qrRetryCam").onclick = () => {
+  qrBusy = false;
+  openQrCamera({ force: true });
+};
 $("qrManual").onclick = openCodeEntry;
 $("qrTorch").onclick = async () => {
   const next = !getTorchOn();
@@ -1932,14 +2130,8 @@ $("qrTorch").onclick = async () => {
   if (!ok) showQrToast("이 기기에서는 라이트를 켤 수 없어요");
 };
 
-$("codeBack").onclick = () => {
-  show("v-qr", { tab: "qr", instant: true });
-  openQrCamera();
-};
-$("codeToQr").onclick = () => {
-  show("v-qr", { tab: "qr", instant: true });
-  openQrCamera();
-};
+$("codeBack").onclick = () => presentQr({ instant: true });
+$("codeToQr").onclick = () => presentQr({ instant: true });
 $("codeSubmit").onclick = submitCodeEntry;
 $("codeInput").onkeydown = (e) => {
   if (e.key === "Enter") submitCodeEntry();
@@ -1949,26 +2141,15 @@ $("codeInput").oninput = () => {
   $("codeInput").value = $("codeInput").value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 };
 
-$("placeBack").onclick = () => goTab("qr");
-$("pickBack").onclick = () => show("v-place");
-$("placeHome").onclick = () => goTab("home");
+$("pickBack").onclick = () => goTab("qr");
 $("pickHome").onclick = () => goTab("home");
-
-$("placeYes").onclick = async () => {
-  state.selected = null;
-  state.openSlot = null;
-  state.busy = false;
-  state.returning = false;
-  setMsg("");
-  try { await refreshInventory(); } catch (e) { setMsg(friendlyError(e)); }
-  render();
-  show("v-pick");
-};
-$("placeNo").onclick = () => goTab("qr");
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) closeQrCamera();
-  else if ($("v-qr").classList.contains("on") && state.user) openQrCamera();
+  else if ($("v-qr").classList.contains("on") && state.user) {
+    qrBusy = false;
+    openQrCamera({ force: true });
+  }
 });
 
 window.addEventListener("resize", () => {

@@ -29,7 +29,7 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=105">
+<link rel="stylesheet" href="/css/app.css?v=114">
 </head>
 <body class="auth-login no-tab">
 <main>
@@ -233,7 +233,7 @@
     </div>
   </div>
 
-  <div class="qr-toast" id="qrToast" hidden role="alert" aria-live="assertive">
+  <div class="qr-toast" id="qrToast" role="alert" aria-live="assertive">
     <span class="qr-toast-ico" aria-hidden="true">!</span>
     <span class="qr-toast-msg" id="qrToastMsg"></span>
   </div>
@@ -323,9 +323,9 @@
     <h1 class="pg-title">결제수단</h1>
     <p class="pg-lead">기본 결제수단으로 결제돼요. 카드를 누르면 기본으로 바뀝니다.</p>
   </div>
-  <div id="payList" class="pay-list vt-stagger" data-stagger="2"></div>
+  <div id="payList" class="pay-list"></div>
   <p class="err" id="payListErr"></p>
-  <button type="button" class="pg-pay-btn" id="payAdd">결제수단 추가하기</button>
+  <button type="button" class="pg-pay-btn vt-stagger" id="payAdd" data-stagger="2">결제수단 추가하기</button>
 </section>
 
 <section class="view" id="v-pay">
@@ -358,17 +358,17 @@
       </div>
     </div>
   </div>
-  <form id="payForm" class="pg-form vt-stagger" data-stagger="3">
-    <div class="pg-field">
+  <form id="payForm" class="pg-form">
+    <div class="pg-field vt-stagger" data-stagger="3">
       <span id="payIssuerLabel">카드사</span>
       <div class="pg-issuers" id="payIssuers" role="listbox" aria-labelledby="payIssuerLabel"></div>
       <input id="payIssuer" type="hidden" value="">
     </div>
-    <label class="pg-field">
+    <label class="pg-field vt-stagger" data-stagger="4">
       <span>카드 번호</span>
       <input id="payNumber" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="1234 5678 9012 3456">
     </label>
-    <div class="pg-row">
+    <div class="pg-row vt-stagger" data-stagger="5">
       <label class="pg-field">
         <span>카드 별명 <span class="pg-opt">(선택)</span></span>
         <input id="payNickname" type="text" maxlength="20" autocomplete="off">
@@ -378,7 +378,7 @@
         <input id="payExpiry" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/YY">
       </label>
     </div>
-    <div class="pg-row">
+    <div class="pg-row vt-stagger" data-stagger="6">
       <label class="pg-field">
         <span>CVC</span>
         <input id="payCvc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123">
@@ -389,8 +389,8 @@
       </label>
     </div>
     <p class="err" id="payErr"></p>
-    <button class="pg-pay-btn" id="paySubmit" type="submit">등록하기</button>
-    <p class="pg-fine">CVC와 비밀번호는 카드에 표시하지 않아요.</p>
+    <button class="pg-pay-btn vt-stagger" id="paySubmit" data-stagger="7" type="submit">등록하기</button>
+    <p class="pg-fine vt-stagger" data-stagger="8">CVC와 비밀번호는 카드에 표시하지 않아요.</p>
   </form>
 </section>
 
@@ -430,40 +430,9 @@
   </div>
 </section>
 
-<section class="view" id="v-place">
-  <div class="top-nav">
-    <button type="button" class="nav-back" id="placeBack">← 돌아가기</button>
-    <button type="button" class="nav-home" id="placeHome">홈</button>
-  </div>
-  <div class="pick-timer-slot place-timer-slot" id="placeTimerSlot">
-    <div class="timer-slot-inner">
-      <div class="timer timer-compact" id="placeTimer" hidden>
-        <div class="timer-compact-row">
-          <span class="tl"></span>
-          <span class="tv"></span>
-        </div>
-        <div class="tf" hidden></div>
-        <div class="bar"><i></i></div>
-        <div class="ts"></div>
-      </div>
-    </div>
-  </div>
-  <div class="pick-head place-head">
-    <h2 class="section-title">이 장소가 맞나요?</h2>
-    <p class="section-desc">QR로 연결된 대여소를 확인해 주세요.</p>
-  </div>
-  <div class="sheet place-sheet">
-    <div class="place" id="placeName"></div>
-    <p class="place-meta" id="placeCode"></p>
-    <button class="btn" id="placeYes" type="button">맞아요, 여기예요</button>
-    <button class="btn ghost" id="placeNo" type="button" style="margin-top:10px">다시 스캔할게요</button>
-    <p class="err" id="placeErr"></p>
-  </div>
-</section>
-
 <section class="view pick-view" id="v-pick">
   <div class="top-nav">
-    <button type="button" class="nav-back" id="pickBack">← 대여소 확인</button>
+    <button type="button" class="nav-back" id="pickBack">← 돌아가기</button>
     <button type="button" class="nav-home" id="pickHome">홈</button>
   </div>
   <div class="pick-timer-slot" id="pickTimerSlot">
@@ -480,6 +449,8 @@
     </div>
   </div>
   <div class="pick-head" id="pickHead">
+    <p class="pick-place" id="pickPlace"></p>
+    <p class="pick-place-code" id="pickPlaceCode"></p>
     <h2 class="section-title" id="pickTitle"></h2>
     <p class="section-desc" id="pickDesc"></p>
   </div>
@@ -608,6 +579,6 @@
 </div>
 
 <script src="/firebase-config.js"></script>
-<script type="module" src="/js/app.js?v=119"></script>
+<script type="module" src="/js/app.js?v=136"></script>
 </body>
 </html>

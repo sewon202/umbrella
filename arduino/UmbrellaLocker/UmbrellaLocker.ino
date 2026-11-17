@@ -17,6 +17,8 @@
                EVENT RFID <slot> <uid> | EVENT RETURN_OK <slot> | EVENT SERVO <slot> <action>
 
   핀: RFID1 SS D10 / RST D9, RFID2 SS D8 / RST D7, Servo D5 / D6, IR D2 / D3
+      서보는 라이브러리를 쓰지 않는다. UNO R4 Servo는 D5·D6이 타이머를 나눠
+      슬롯 1을 움직이면 슬롯 2 펄스도 같이 바뀐다. 각 핀에 자기 각도만 보낸다.
       RGB 모듈: R=A1, G=A2, B=A3 (아날로그, V=5V 공통양극).
       부팅~Wi-Fi 연결 중에만 무지개. 연결 시도가 끝나면 끔.
   업로드 전 WIFI_* 와 STATION_CODE 를 현장 값으로 바꾸세요.
@@ -26,7 +28,6 @@
 
 #include <SPI.h>
 #include <MFRC522.h>
-#include <Servo.h>
 #include <WiFiS3.h>
 #include <WiFiSSLClient.h>
 
@@ -66,6 +67,8 @@ const unsigned long OPEN_MAX_MS          = 25000;  // 안전: 강제 닫힘
 const unsigned long POLL_MS              = 200;    // 문 열기 명령을 더 자주 확인
 const int DOOR_STEP_DEG                   = 2;
 const unsigned long DOOR_STEP_MS          = 30;    // 열림·닫힘 모두 90도 약 1.3초
+const unsigned long SERVO_SWEEP_MS        = (DOOR_OPEN_DEG / DOOR_STEP_DEG) * DOOR_STEP_MS;
+const unsigned long SERVO_TAIL_MS         = 6 * 20;
 const unsigned long PRESENCE_MS          = 12000;  // 평소 하트비트. IR 변화는 따로
 const unsigned long PRESENCE_BUSY_MS     = 8000;   // 문 감시 중 하트비트
 const unsigned long IR_REPORT_MIN_MS     = 80;     // IR 엣지 디바운스
@@ -88,7 +91,6 @@ enum DoorState : uint8_t {
 struct Slot {
   uint8_t id = 0;
   MFRC522 rfid;
-  Servo servo;
   int angle = DOOR_CLOSED_DEG;
   unsigned long lastTagMs = 0;
   DoorState door = DOOR_IDLE;
@@ -211,18 +213,53 @@ String uidToString(const MFRC522::Uid& uid) {
   return s;
 }
 
+// Arduino Servo.write(0..180) 과 같은 펄스. 슬롯마다 따로 계산한다.
+const int SERVO_MIN_US = 544;
+const int SERVO_MAX_US = 2400;
+unsigned long lastServoFrameMs = 0;
+
+int angleToUs(int angle) {
+  if (angle < 0) angle = 0;
+  if (angle > 180) angle = 180;
+  return SERVO_MIN_US + (long)(SERVO_MAX_US - SERVO_MIN_US) * angle / 180;
+}
+
+/** 각 슬롯 핀에 그 슬롯의 각도만 보낸다. 다른 슬롯 각도는 바꾸지 않는다. */
+void pulseServos() {
+  if (!ENABLE_SERVO) return;
+  for (uint8_t i = 0; i < 2; i++) {
+    digitalWrite(SERVO_PINS[i], HIGH);
+    delayMicroseconds(angleToUs(slots[i].angle));
+    digitalWrite(SERVO_PINS[i], LOW);
+    delayMicroseconds(150);
+  }
+  lastServoFrameMs = millis();
+}
+
+void serviceServos() {
+  if (!ENABLE_SERVO) return;
+  if (millis() - lastServoFrameMs < 20) return;
+  pulseServos();
+}
+
 void moveDoor(Slot& s, int target) {
   if (s.angle == target) return;
+  const int other = s.id == 1 ? slots[1].angle : slots[0].angle;
   Serial.print("[SERVO] slot "); Serial.print(s.id);
-  Serial.print(" "); Serial.print(s.angle); Serial.print(" -> "); Serial.println(target);
+  Serial.print(" "); Serial.print(s.angle); Serial.print(" -> "); Serial.print(target);
+  Serial.print(" | other stays "); Serial.println(other);
   if (!ENABLE_SERVO) { s.angle = target; return; }
   const int step = target > s.angle ? DOOR_STEP_DEG : -DOOR_STEP_DEG;
   while (s.angle != target) {
     int next = s.angle + step;
     if ((step > 0 && next > target) || (step < 0 && next < target)) next = target;
     s.angle = next;
-    s.servo.write(s.angle);
+    pulseServos();
     delay(DOOR_STEP_MS);
+  }
+  for (uint8_t n = 0; n < 6; n++) {
+    pulseServos();
+    delay(20);
   }
 }
 
@@ -250,7 +287,8 @@ void updateLinkMode() {
 }
 
 // ---------- 이벤트 ----------
-void reportEventFirebase(const Slot& s, const char* kind, const String& extra);
+void reportEventFirebase(const Slot& s, const char* kind, const String& extra,
+                         const char* phase, unsigned long moveMs, unsigned long sinceStart);
 void enqueueEvent(const Slot& s, const char* kind, const String& extra);
 bool enqueueDone(const String& id);
 void reportSenseIr(Slot& s);
@@ -276,6 +314,8 @@ void reportEvent(const Slot& s, const char* kind, const String& extra) {
   }
 }
 
+void reportServo(const Slot& s, const char* action, const char* phase, unsigned long moveMs, unsigned long startMs);
+
 // ---------- 문 감시 (자동 닫힘) ----------
 void startWatch(Slot& s, bool isReturn) {
   s.door = isReturn ? RET_WAIT_DETECT : RENT_WAIT_PRESENT;
@@ -287,13 +327,15 @@ void startWatch(Slot& s, bool isReturn) {
 }
 
 void finishWatch(Slot& s, const char* action) {
-  Serial.print("[DOOR] "); Serial.print(action); Serial.print(" slot "); Serial.println(s.id);
   s.door = DOOR_IDLE;
-  // 닫힘 이벤트를 모터보다 먼저 올려 웹 애니메이션과 서보가 같이 시작하게 한다.
-  if (!isWired()) reportEventFirebase(s, "servo", action);
-  else reportEvent(s, "servo", action);
-  s.cmd = "";
+  // 모터를 먼저 움직인다. 시간 기록은 끝난 뒤에 큐에만 넣는다.
+  const unsigned long t0 = millis();
   closeDoor(s);
+  const unsigned long elapsed = millis() - t0;
+  const unsigned long sweep = elapsed > SERVO_TAIL_MS ? elapsed - SERVO_TAIL_MS : elapsed;
+  Serial.print("[DOOR] "); Serial.print(action); Serial.print(" slot "); Serial.println(s.id);
+  reportServo(s, action, "done", sweep, t0);
+  s.cmd = "";
 }
 
 void updateWatch(Slot& s) {
@@ -410,19 +452,26 @@ void testServo(Slot& s, bool opening, const String& cmdId) {
   s.cmd = cmdId;
   s.irSince = 0;
   s.rfidOk = false;
+  const unsigned long t0 = millis();
   if (opening) openDoor(s);
   else closeDoor(s);
   presenceDirty = true;
-  reportEvent(s, "servo", opening ? "test_open" : "test_close");
+  const unsigned long elapsed = millis() - t0;
+  const unsigned long sweep = elapsed > SERVO_TAIL_MS ? elapsed - SERVO_TAIL_MS : elapsed;
+  reportServo(s, opening ? "test_open" : "test_close", "done", sweep, t0);
 }
 
 void executeCommand(Slot& s, bool isReturn, const String& cmdId) {
   s.cmd = cmdId;
-  // 서보 먼저 — HTTPS(이벤트/presence)는 문 연 뒤에만
+  const char* action = isReturn ? "open_return" : "open";
+  // 통신보다 모터가 먼저다. 측정 이벤트는 움직임이 끝난 뒤 하나다.
+  const unsigned long t0 = millis();
   openDoor(s);
   startWatch(s, isReturn);
   presenceDirty = true;
-  reportEvent(s, "servo", isReturn ? "open_return" : "open");
+  const unsigned long elapsed = millis() - t0;
+  const unsigned long sweep = elapsed > SERVO_TAIL_MS ? elapsed - SERVO_TAIL_MS : elapsed;
+  reportServo(s, action, "done", sweep, t0);
 }
 
 void splitSlotCmd(const String& line, int prefix, int& slotNo, String& cmdId) {
@@ -912,7 +961,8 @@ bool markCommandDone(const String& docId) {
   return ok;
 }
 
-void reportEventFirebase(const Slot& s, const char* kind, const String& extra) {
+void reportEventFirebase(const Slot& s, const char* kind, const String& extra,
+                         const char* phase, unsigned long moveMs, unsigned long sinceStart) {
   // 각 값은 반드시 닫는다. "present":{"booleanValue":true,"source":{...}} 처럼
   // 다음 키를 값 안에 넣으면 Firestore 400 (Unknown name "source") 이 난다.
   String payload;
@@ -922,6 +972,11 @@ void reportEventFirebase(const Slot& s, const char* kind, const String& extra) {
     payload = String("\"via\":{\"stringValue\":\"") + extra + "\"}";
   } else {
     payload = String("\"action\":{\"stringValue\":\"") + extra + "\"},\"deg\":{\"integerValue\":\"" + String(DOOR_OPEN_DEG) + "\"}";
+    if (phase && phase[0]) {
+      payload += ",\"phase\":{\"stringValue\":\"" + String(phase) + "\"}";
+      payload += ",\"move_ms\":{\"integerValue\":\"" + String(moveMs) + "\"}";
+      payload += ",\"since_start_ms\":{\"integerValue\":\"" + String(sinceStart) + "\"}";
+    }
   }
 
   const String created = epochMsString();
@@ -954,6 +1009,9 @@ struct EvItem {
   char kind[12];
   char extra[40];
   char cmd[32];
+  char phase[8];
+  unsigned long moveMs;
+  unsigned long startMs;
 };
 EvItem evQ[NETQ];
 uint8_t evHead = 0, evLen = 0;
@@ -967,7 +1025,7 @@ void clipCopy(char* dst, size_t n, const char* src) {
 
 void enqueueEvent(const Slot& s, const char* kind, const String& extra) {
   if (evLen >= NETQ) {
-    reportEventFirebase(s, kind, extra);
+    reportEventFirebase(s, kind, extra, nullptr, 0, 0);
     return;
   }
   EvItem& e = evQ[(evHead + evLen) % NETQ];
@@ -975,7 +1033,43 @@ void enqueueEvent(const Slot& s, const char* kind, const String& extra) {
   clipCopy(e.kind, sizeof e.kind, kind);
   clipCopy(e.extra, sizeof e.extra, extra.c_str());
   clipCopy(e.cmd, sizeof e.cmd, s.cmd.c_str());
+  e.phase[0] = 0;
+  e.moveMs = 0;
+  e.startMs = 0;
   evLen++;
+}
+
+/** 모터가 끝난 뒤 호출한다. HTTP는 여기서 열지 않고 루프의 flush 에 맡긴다. */
+void reportServo(const Slot& s, const char* action, const char* phase, unsigned long moveMs, unsigned long startMs) {
+  const unsigned long since = startMs ? (millis() - startMs) : 0;
+  if (!isWired()) {
+    if (evLen >= NETQ) {
+      evHead = (evHead + 1) % NETQ;
+      evLen--;
+    }
+    EvItem& e = evQ[(evHead + evLen) % NETQ];
+    e.slot = s.id;
+    clipCopy(e.kind, sizeof e.kind, "servo");
+    clipCopy(e.extra, sizeof e.extra, action);
+    clipCopy(e.cmd, sizeof e.cmd, s.cmd.c_str());
+    clipCopy(e.phase, sizeof e.phase, phase);
+    e.moveMs = moveMs;
+    e.startMs = startMs;
+    evLen++;
+    return;
+  }
+  Serial.print("EVENT SERVO ");
+  Serial.print(s.id);
+  Serial.print(' ');
+  Serial.print(action);
+  Serial.print(' ');
+  Serial.print(phase);
+  Serial.print(' ');
+  Serial.print(moveMs);
+  Serial.print(' ');
+  Serial.print(since);
+  printCmdToken(s);
+  Serial.println();
 }
 
 bool enqueueDone(const String& id) {
@@ -995,7 +1089,8 @@ bool flushOneNet() {
     if (!s) return true;
     String saved = s->cmd;
     s->cmd = e.cmd;
-    reportEventFirebase(*s, e.kind, String(e.extra));
+    const unsigned long since = e.startMs ? (millis() - e.startMs) : 0;
+    reportEventFirebase(*s, e.kind, String(e.extra), e.phase[0] ? e.phase : nullptr, e.moveMs, since);
     s->cmd = saved;
     return true;
   }
@@ -1199,7 +1294,7 @@ void setup() {
   Serial.begin(9600);
   while (!Serial && (unsigned long)(millis() - rgbBootStart) < 3000) rgbService(20);
   rgbService(200);
-  Serial.println("[BOOT] UmbrellaLocker v5 — per-slot cmd, deferred net");
+  Serial.println("[BOOT] UmbrellaLocker v7 — servo timing");
 
   for (int i = 0; i < 2; i++) {
     pinMode(SS_PINS[i], OUTPUT);
@@ -1214,9 +1309,9 @@ void setup() {
     Serial.print("[BOOT] RFID"); Serial.print(s.id); Serial.print(" ver=0x");
     Serial.println(s.rfid.PCD_ReadRegister(MFRC522::VersionReg), HEX);
     if (ENABLE_SERVO) {
-      s.servo.attach(SERVO_PINS[i]);
-      s.servo.write(DOOR_CLOSED_DEG);
-      rgbService(150);
+      pinMode(SERVO_PINS[i], OUTPUT);
+      digitalWrite(SERVO_PINS[i], LOW);
+      s.angle = DOOR_CLOSED_DEG;
     }
   }
 
@@ -1229,9 +1324,16 @@ void setup() {
     Serial.println("[BOOT] WiFi 미설정 — USB bridge 로만 동작");
   }
   Serial.print("[BOOT] ready station="); Serial.println(STATION_CODE);
+  if (ENABLE_SERVO) {
+    for (uint8_t n = 0; n < 25; n++) {
+      pulseServos();
+      delay(20);
+    }
+  }
 }
 
 void loop() {
+  serviceServos();
   pollSerial();
   updateLinkMode();
   for (Slot& s : slots) {

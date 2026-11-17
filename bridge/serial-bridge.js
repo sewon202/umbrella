@@ -218,7 +218,7 @@ async function main() {
 
   async function sendEvent(slot, kind, payload) {
     const cmd = slotCmd[slot] || (payload && payload.cmd) || "";
-    const body = cmd ? { ...payload, cmd } : payload;
+    const body = { stamp: "server", ...payload, ...(cmd ? { cmd } : {}) };
     try {
       await api.event({ station: STATION, slot, kind, payload: body, ...(cmd ? { cmd } : {}) });
     } catch (e) {
@@ -233,7 +233,12 @@ async function main() {
     [/^EVENT\s+IR\s+(\d+)\s+(\d+)/i, (m) => sendEvent(Number(m[1]), "ir", { present: m[2] === "1", source: "sense_ir" })],
     [/^EVENT\s+IR\s+(\d+)/i, (m) => sendEvent(Number(m[1]), "ir", { present: true, source: "sense_ir" })],
     [/^EVENT\s+RETURN_OK\s+(\d+)(?:\s+(\S+))?/i, (m) => sendEvent(Number(m[1]), "return_ok", { via: "rfid_ir", ...(m[2] ? { cmd: m[2] } : {}) })],
-    [/^EVENT\s+SERVO\s+(\d+)\s+(\S+)(?:\s+(\S+))?/i, (m) => sendEvent(Number(m[1]), "servo", { action: m[2], deg: 90, ...(m[3] ? { cmd: m[3] } : {}) })],
+    [/^EVENT\s+SERVO\s+(\d+)\s+(\S+)(?:\s+(start|done)\s+(\d+)\s+(\d+))?(?:\s+(\S+))?/i, (m) => sendEvent(Number(m[1]), "servo", {
+      action: m[2],
+      deg: 90,
+      ...(m[3] ? { phase: String(m[3]).toLowerCase(), move_ms: Number(m[4]), since_start_ms: Number(m[5]) } : {}),
+      ...(m[6] ? { cmd: m[6] } : {}),
+    })],
   ];
 
   parser.on("data", (raw) => {

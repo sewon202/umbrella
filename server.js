@@ -450,6 +450,7 @@ app.post("/api/rent", (req, res) => {
     res.json({
       ok: true, id: Number(c.lastInsertRowid), rentalId: Number(r.lastInsertRowid),
       station, slot, rented_at: now, due_at,
+      commandAt: now, serverNow: Date.now(),
     });
   } catch (e) {
     db.exec("ROLLBACK");
@@ -477,7 +478,10 @@ app.post("/api/return", (req, res) => {
     q.closeRental.run(now, active.id);
     const c = q.insertCommand.run(station, slot, "open_return", studentId, now);
     db.exec("COMMIT");
-    res.json({ ok: true, id: Number(c.lastInsertRowid), station, slot });
+    res.json({
+      ok: true, id: Number(c.lastInsertRowid), station, slot,
+      commandAt: now, serverNow: Date.now(),
+    });
   } catch (e) {
     db.exec("ROLLBACK");
     bad(res, "반납 처리 중 오류가 발생했어요.", 500);
@@ -491,8 +495,12 @@ app.post("/api/open", (req, res) => {
   const action = (req.body && req.body.action) || "open";
   if (!station) return bad(res, "station이 필요해요.");
   if (!assertSlot(res, slot)) return;
-  const info = q.insertCommand.run(station, slot, action, (req.body && req.body.studentId) || null, Date.now());
-  res.json({ ok: true, id: Number(info.lastInsertRowid), station, slot, action });
+  const now = Date.now();
+  const info = q.insertCommand.run(station, slot, action, (req.body && req.body.studentId) || null, now);
+  res.json({
+    ok: true, id: Number(info.lastInsertRowid), station, slot, action,
+    commandAt: now, serverNow: Date.now(),
+  });
 });
 
 // ---------- 관리 ----------

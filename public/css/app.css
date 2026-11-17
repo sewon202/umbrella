@@ -521,6 +521,40 @@ main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { anim
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 530ms; }
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 640ms; }
 
+/* 결제수단: 짧게 떠오르며 늦게 자리 잡는다. 앞에서 끝나지 않게 둔다. */
+main.vt-busy > #v-pay.vt-to .vt-stagger,
+main.vt-busy > #v-pay-list.vt-to .vt-stagger {
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+}
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger,
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger {
+  animation: vtPayIn 780ms cubic-bezier(0.33, 0.02, 0.2, 1) both;
+}
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 70ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 160ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 250ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 340ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 420ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 500ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 570ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="7"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="7"] { animation-delay: 640ms; }
+main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="8"],
+main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="8"] { animation-delay: 700ms; }
+@keyframes vtPayIn {
+  0% { opacity: 0; transform: translate3d(0, 10px, 0); }
+  68% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+
 /* 박스 안 텍스트: 화면 슬라이드와 같은 가로 방향 + 시차 (이름 → 학번) */
 main.vt-busy > .view.vt-to[data-vt="enter-tab-right"] .vt-stagger-text {
   opacity: 0;
@@ -824,6 +858,9 @@ main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="1"] {
   cursor: not-allowed;
 }
 /* 열림 / 닫힘 — DOM을 유지한 채 클래스만 바꿔 transition */
+.door.is-synced {
+  transition: none;
+}
 .door.open,
 .door.opening {
   transform: rotateY(-70deg);
@@ -1027,6 +1064,18 @@ main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="1"] {
 .timer-compact.is-return-done .tv {
   font-size: calc(15px * var(--ui-scale));
   font-weight: 800;
+}
+.pick-place {
+  margin: 0;
+  font-size: calc(20px * var(--ui-scale));
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.pick-place-code {
+  margin: 2px 0 calc(10px * var(--ui-scale));
+  color: var(--muted);
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 700;
 }
 .pick-head {
   margin-top: 0;
@@ -1512,15 +1561,20 @@ main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="1"] {
 }
 
 /* ---------- immersive QR/Map — 항상 main(최대 430px) 안에만 ---------- */
-body.qr-open {
+body.qr-open,
+body.map-open {
+  height: var(--app-h);
+  max-height: var(--app-h);
+  overflow: hidden;
   background: var(--bg);
 }
 body.qr-open main,
 body.map-open main,
 body.code-open main {
-  /* max-width는 main 기본(430px) 유지 — 데스크탑에서 옆으로 넓어지지 않음 */
   padding: 0;
-  min-height: var(--app-h, 100svh);
+  height: calc(var(--app-h) - var(--safe-top));
+  max-height: calc(var(--app-h) - var(--safe-top));
+  min-height: 0;
   overflow: hidden;
 }
 .view-immersive.on {
@@ -1546,11 +1600,25 @@ body.code-open main {
   -webkit-overflow-scrolling: touch;
 }
 
-.qr-stage {
-  position: relative;
-  flex: 1;
+/* 홈(shell-lock)이 아니어도 QR 화면 높이는 항상 같다. 두 번째 열 때 줄어들지 않게. */
+#v-qr.view-immersive.on,
+main.vt-busy > #v-qr.vt-to,
+main.vt-busy > #v-qr.vt-from {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: auto;
   width: 100%;
-  min-height: var(--app-h, 100svh);
+  height: calc(var(--app-h) - var(--safe-top));
+  min-height: calc(var(--app-h) - var(--safe-top));
+  max-height: calc(var(--app-h) - var(--safe-top));
+}
+.qr-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: #05070c;
   isolation: isolate;
@@ -1566,21 +1634,19 @@ body.code-open main {
 .qr-video {
   position: absolute;
   z-index: 1;
-  left: 0;
-  top: 0;
-  /* JS fitQrVideoCover가 cover 크기를 픽셀로 고정하기 전엔 숨김 */
+  inset: 0;
   width: 100%;
   height: 100%;
+  max-width: none;
+  max-height: none;
   object-fit: cover;
   object-position: center center;
   background: #05070c;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  /* 페이드 없이 바로 최종 배율로 표시 — 확대 트랜지션처럼 보이지 않게 */
   transition: none;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
+  transform: none;
 }
 .qr-stage.ready .qr-video.is-fitted {
   opacity: 1;
@@ -1767,10 +1833,11 @@ body.code-open main {
   position: fixed;
   left: 50%;
   bottom: calc(28px + var(--safe-bot));
-  transform: translate(-50%, 12px) scale(0.98);
-  width: min(360px, calc(100% - 32px));
+  translate: -50% 14px;
+  width: min(360px, calc(100vw - 32px));
+  box-sizing: border-box;
   z-index: 60;
-  display: none;
+  display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
@@ -1783,15 +1850,16 @@ body.code-open main {
   font-weight: 700;
   letter-spacing: -0.02em;
   opacity: 0;
-  transition: opacity 0.22s ease, transform 0.22s ease;
+  visibility: hidden;
+  transition: opacity 0.22s ease, translate 0.22s ease, visibility 0.22s ease;
   pointer-events: none;
 }
 .qr-toast.show {
-  display: flex;
   opacity: 1;
-  transform: translate(-50%, 0) scale(1);
+  visibility: visible;
+  translate: -50% 0;
 }
-.qr-toast.shake { animation: qrToastShake 0.45s ease; }
+.qr-toast.shake { animation: qrToastShake 0.4s ease; }
 .qr-toast-ico {
   flex-shrink: 0;
   width: 24px;
@@ -2444,7 +2512,7 @@ body.code-open main {
   max-height: min(78vh, 640px);
   overflow: auto;
   background: #F7F8F9;
-  border-radius: 24px 24px 0 0;
+  border-radius: 24px;
   padding: 20px 16px 16px;
   box-shadow: 0 24px 60px rgba(6, 24, 32, 0.28);
   transform: translate3d(0, 110%, 0);

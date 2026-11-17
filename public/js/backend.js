@@ -528,7 +528,10 @@ function createFirebaseBackend() {
         return newCommand(tx, { station, slot, studentId, action: "open", now });
       });
 
-      return { ok: true, id: cmdId, rentalId: rRef.id, station, slot, rented_at: now, due_at };
+      return {
+        ok: true, id: cmdId, rentalId: rRef.id, station, slot, rented_at: now, due_at,
+        commandAt: now, serverNow: Date.now(),
+      };
     },
 
     /** 반납: 활성 대여가 있으면 비어 있는 칸(out) 어디에나 반납 */
@@ -561,17 +564,18 @@ function createFirebaseBackend() {
         return newCommand(tx, { station, slot, studentId, action: "open_return", now });
       });
 
-      return { ok: true, id: cmdId, station, slot };
+      return { ok: true, id: cmdId, station, slot, commandAt: now, serverNow: Date.now() };
     },
 
     async openDoor({ station, slot, studentId, action = "open" }) {
       assertSlot(slot);
       requireUser();
+      const now = Date.now();
       const ref = await addDoc(collection(db, "commands"), {
         station, slot, action, student_id: studentId || null,
-        done: 0, created_at: Date.now(), done_at: null,
+        done: 0, created_at: now, done_at: null,
       });
-      return { ok: true, id: ref.id, station, slot, action };
+      return { ok: true, id: ref.id, station, slot, action, commandAt: now, serverNow: Date.now() };
     },
 
     async savePaymentWallet(wallet) {
