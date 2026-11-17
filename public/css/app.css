@@ -175,28 +175,24 @@ body.auth-login #v-login.view.on {
   height: 100%;
 }
 
-/* 회원가입: 하단 버튼 + 키보드 시 스크롤 */
+/* 회원가입도 로그인과 같이 화면 높이를 고정해 버튼을 처음부터 하단에 둔다 */
 body.auth-signup {
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  height: auto;
-  min-height: var(--app-h);
-  max-height: none;
+  overflow: hidden;
+  height: var(--app-h);
+  max-height: var(--app-h);
 }
 body.auth-signup main {
-  height: auto;
+  height: calc(var(--app-h) - var(--safe-top));
+  max-height: calc(var(--app-h) - var(--safe-top));
   min-height: calc(var(--app-h) - var(--safe-top));
-  max-height: none;
-  overflow: visible;
-  padding-bottom: calc(28px + var(--safe-bot) + 40vh);
+  overflow: hidden;
+  overscroll-behavior: none;
+  padding-bottom: calc(24px + var(--safe-bot));
 }
 body.auth-signup #v-signup.view.on {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 auto;
-  /* 뷰포트만큼은 채워 버튼을 하단에, 내용은 더 늘어날 수 있음 */
-  min-height: calc(var(--app-h) - var(--safe-top) - 24px - var(--safe-bot));
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
 main {
@@ -213,9 +209,6 @@ main {
   flex-direction: column;
 }
 body.no-tab main { padding-bottom: calc(24px * var(--ui-scale) + var(--safe-bot)); }
-body.no-tab.auth-signup main {
-  padding-bottom: calc(28px * var(--ui-scale) + var(--safe-bot) + 40vh);
-}
 main.vt-busy {
   overflow: hidden;
   pointer-events: none;
