@@ -912,11 +912,9 @@ async function signupSubmit() {
     $("pw").value = "";
     ["joinSid", "joinName", "joinPw", "joinPw2"].forEach((id) => { $(id).value = ""; });
     setTimeout(() => {
-      location.hash = "login";
-      Promise.resolve(show("v-login")).then(() => {
-        playLoginReveal();
-        $("pw").focus();
-      });
+      if ((location.hash || "").toLowerCase() !== "#login") location.hash = "login";
+      else enterAuth("login");
+      $("pw").focus();
     }, 700);
   } catch (e) {
     out.className = "err";
@@ -926,15 +924,22 @@ async function signupSubmit() {
   }
 }
 
-function playLoginReveal() {
-  const root = $("v-login");
+function clearAuthReveal(id) {
+  const root = $(id);
+  if (!root) return;
+  root.classList.remove("login-reveal-ready", "login-reveal-run");
+}
+
+function playAuthReveal(id) {
+  const root = $(id);
   if (!root || !root.classList.contains("on")) return;
   if (prefersReducedMotion()) {
-    root.classList.remove("login-reveal-ready", "login-reveal-run");
+    clearAuthReveal(id);
     return;
   }
-  root.classList.add("login-reveal-ready");
+  // run 이 남은 채로 화면이 다시 보이면 브라우저가 애니메이션을 한 번 더 시작함
   root.classList.remove("login-reveal-run");
+  root.classList.add("login-reveal-ready");
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (!root.classList.contains("on")) return;
@@ -943,15 +948,25 @@ function playLoginReveal() {
   });
 }
 
+function enterAuth(which, { instant = false } = {}) {
+  const signup = which === "signup";
+  const id = signup ? "v-signup" : "v-login";
+  clearAuthReveal(signup ? "v-login" : "v-signup");
+  const root = $(id);
+  if (root) root.classList.remove("login-reveal-run");
+  const shown = show(id, { instant });
+  playAuthReveal(id);
+  return shown;
+}
+
 function showAuth(which) {
   if (state.user) return;
-  if (which === "signup") {
-    location.hash = "signup";
-    show("v-signup");
-  } else {
-    location.hash = "login";
-    Promise.resolve(show("v-login")).then(() => playLoginReveal());
+  const next = which === "signup" ? "#signup" : "#login";
+  if ((location.hash || "").toLowerCase() !== next) {
+    location.hash = which === "signup" ? "signup" : "login";
+    return;
   }
+  enterAuth(which);
 }
 
 async function logout() {
@@ -963,7 +978,7 @@ async function logout() {
   syncPickActions();
   setTabbar(false);
   history.replaceState(null, "", location.pathname + location.search);
-  Promise.resolve(show("v-login")).then(() => playLoginReveal());
+  enterAuth("login", { instant: true });
 }
 
 /** 대여: 보관중(in)만 / 반납: 비어있는 칸(out)만 */
@@ -2583,7 +2598,7 @@ $("tagBtn").onclick = () => {
 window.addEventListener("hashchange", async () => {
   const auth = authHash();
   if (!state.user && auth) {
-    show(auth === "signup" ? "v-signup" : "v-login");
+    enterAuth(auth === "signup" ? "signup" : "login");
     return;
   }
   const code = readStationFromHash();
@@ -2601,6 +2616,7 @@ setInterval(tick, 1000);
   if (bootAuth === "v-signup") {
     $("v-login").classList.remove("on");
     $("v-signup").classList.add("on");
+    if (!prefersReducedMotion()) $("v-signup").classList.add("login-reveal-ready");
   } else if (!prefersReducedMotion()) {
     $("v-login").classList.add("login-reveal-ready");
   }
@@ -2616,15 +2632,13 @@ setInterval(tick, 1000);
       syncUserChrome();
       tick();
       $("v-login").classList.remove("login-reveal-ready", "login-reveal-run");
+      $("v-signup").classList.remove("login-reveal-ready", "login-reveal-run");
       show("v-home", { tab: "home", instant: true });
       return;
     }
   } catch (e) {
     console.warn("[umbrella] session restore failed", e);
   }
-  if (authHash() === "signup") show("v-signup", { instant: true });
-  else {
-    show("v-login", { instant: true });
-    playLoginReveal();
-  }
+  if (authHash() === "signup") enterAuth("signup", { instant: true });
+  else enterAuth("login", { instant: true });
 })();

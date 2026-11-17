@@ -606,19 +606,28 @@ main.vt-busy > #v-history.vt-to[data-vt-run="1"] .tx-reveal-line > span {
   to { transform: none; opacity: 1; }
 }
 
-/* 로그인 첫 진입 — 좌→우 텍스트 리빌 + 입력/버튼 연출 */
-#v-login .login-reveal {
+/* 로그인·회원가입 첫 진입 — 좌→우 텍스트 리빌 + 입력/버튼 연출 */
+#v-login .login-reveal,
+#v-signup .login-reveal {
   opacity: 1;
 }
 #v-login.login-reveal-ready .login-reveal[data-reveal="0"],
 #v-login.login-reveal-ready .login-reveal[data-reveal="2"],
 #v-login.login-reveal-ready .login-reveal[data-reveal="3"],
 #v-login.login-reveal-ready .login-reveal[data-reveal="4"],
-#v-login.login-reveal-ready .login-reveal[data-reveal="5"] {
+#v-login.login-reveal-ready .login-reveal[data-reveal="5"],
+#v-signup.login-reveal-ready .login-reveal[data-reveal="0"],
+#v-signup.login-reveal-ready .login-reveal[data-reveal="2"],
+#v-signup.login-reveal-ready .login-reveal[data-reveal="3"],
+#v-signup.login-reveal-ready .login-reveal[data-reveal="4"],
+#v-signup.login-reveal-ready .login-reveal[data-reveal="5"],
+#v-signup.login-reveal-ready .login-reveal[data-reveal="6"],
+#v-signup.login-reveal-ready .login-reveal[data-reveal="7"] {
   opacity: 0;
   transform: translate3d(-18px, 0, 0);
 }
-#v-login.login-reveal-ready .login-reveal-line > span {
+#v-login.login-reveal-ready .login-reveal-line > span,
+#v-signup.login-reveal-ready .login-reveal-line > span {
   opacity: 0;
   transform: none;
   clip-path: inset(0 100% 0 0);
@@ -627,18 +636,34 @@ main.vt-busy > #v-history.vt-to[data-vt-run="1"] .tx-reveal-line > span {
 #v-login.login-reveal-run .login-reveal[data-reveal="2"],
 #v-login.login-reveal-run .login-reveal[data-reveal="3"],
 #v-login.login-reveal-run .login-reveal[data-reveal="4"],
-#v-login.login-reveal-run .login-reveal[data-reveal="5"] {
+#v-login.login-reveal-run .login-reveal[data-reveal="5"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="0"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="2"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="3"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="4"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="5"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="6"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="7"] {
   animation: loginRevealIn 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-#v-login.login-reveal-run .login-reveal[data-reveal="0"] { animation-delay: 40ms; }
-#v-login.login-reveal-run .login-reveal[data-reveal="2"] { animation-delay: 210ms; }
-#v-login.login-reveal-run .login-reveal[data-reveal="3"] { animation-delay: 300ms; }
-#v-login.login-reveal-run .login-reveal[data-reveal="4"] { animation-delay: 380ms; }
-#v-login.login-reveal-run .login-reveal[data-reveal="5"] { animation-delay: 470ms; }
-#v-login.login-reveal-run .login-reveal-line > span {
+#v-login.login-reveal-run .login-reveal[data-reveal="0"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="0"] { animation-delay: 40ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="2"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="2"] { animation-delay: 210ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="3"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="3"] { animation-delay: 300ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="4"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="4"] { animation-delay: 380ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="5"],
+#v-signup.login-reveal-run .login-reveal[data-reveal="5"] { animation-delay: 470ms; }
+#v-signup.login-reveal-run .login-reveal[data-reveal="6"] { animation-delay: 550ms; }
+#v-signup.login-reveal-run .login-reveal[data-reveal="7"] { animation-delay: 630ms; }
+#v-login.login-reveal-run .login-reveal-line > span,
+#v-signup.login-reveal-run .login-reveal-line > span {
   animation: loginTextWipe 780ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-#v-login.login-reveal-run .login-reveal-line:nth-child(1) > span { animation-delay: 90ms; }
+#v-login.login-reveal-run .login-reveal-line:nth-child(1) > span,
+#v-signup.login-reveal-run .login-reveal-line:nth-child(1) > span { animation-delay: 90ms; }
 #v-login.login-reveal-run .login-reveal-line:nth-child(2) > span { animation-delay: 160ms; }
 @keyframes loginRevealIn {
   from { opacity: 0; transform: translate3d(-18px, 0, 0); }
@@ -652,7 +677,11 @@ main.vt-busy > #v-history.vt-to[data-vt-run="1"] .tx-reveal-line > span {
   #v-login.login-reveal-ready .login-reveal,
   #v-login.login-reveal-ready .login-reveal-line > span,
   #v-login.login-reveal-run .login-reveal,
-  #v-login.login-reveal-run .login-reveal-line > span {
+  #v-login.login-reveal-run .login-reveal-line > span,
+  #v-signup.login-reveal-ready .login-reveal,
+  #v-signup.login-reveal-ready .login-reveal-line > span,
+  #v-signup.login-reveal-run .login-reveal,
+  #v-signup.login-reveal-run .login-reveal-line > span {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
