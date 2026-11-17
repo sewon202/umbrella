@@ -10,6 +10,10 @@ label{display:block;font-weight:700;font-size:13px;margin:8px 0 4px}
 input,select,button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid #bbc;cursor:pointer}
 button.primary{background:#F2B705;border:0;font-weight:800}
 button.ghost{background:#fff}
+button.danger{background:#fff;color:#B3261E;border-color:#E7B4B0}
+button.danger:disabled{opacity:.5;cursor:default}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+#historyCard[hidden]{display:none}
 pre{background:#12202B;color:#E8F0F5;padding:12px;border-radius:10px;overflow:auto;font-size:12px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
 .row > *{flex:1;min-width:120px}

@@ -80,6 +80,7 @@ for (const sql of [
   "ALTER TABLE students ADD COLUMN payment_last4 TEXT",
   "ALTER TABLE students ADD COLUMN payment_registered_at INTEGER",
   "ALTER TABLE students ADD COLUMN payment_wallet TEXT",
+  "ALTER TABLE students ADD COLUMN unpaid_fee TEXT",
 ]) {
   try { db.exec(sql); } catch (_) {}
 }
@@ -138,8 +139,17 @@ const q = {
   activeRental: db.prepare(
     "SELECT * FROM rentals WHERE student_id = ? AND returned_at IS NULL ORDER BY id DESC LIMIT 1"
   ),
+  setUnpaid: db.prepare("UPDATE students SET unpaid_fee = ? WHERE student_id = ?"),
+  deleteStudentById: db.prepare("DELETE FROM students WHERE student_id = ?"),
+  deleteRentalsByStudent: db.prepare("DELETE FROM rentals WHERE student_id = ?"),
+  freeUmbrellasByStudent: db.prepare(
+    "UPDATE umbrellas SET status = 'in', rented_by = NULL, rented_at = NULL WHERE rented_by = ?"
+  ),
   listActiveRentals: db.prepare(
     "SELECT * FROM rentals WHERE returned_at IS NULL ORDER BY rented_at DESC LIMIT 50"
+  ),
+  listRentalsByStudent: db.prepare(
+    "SELECT * FROM rentals WHERE student_id = ? ORDER BY rented_at DESC"
   ),
   stationUmbrellas: db.prepare(
     "SELECT tag_uid, station, slot, status, rented_by, rented_at FROM umbrellas WHERE station = ? ORDER BY slot"
@@ -217,6 +227,35 @@ const assertSlot = (res, slot) => {
 };
 const rentalView = (r) =>
   r && { rentalId: r.id, station: r.station, slot: r.slot, rented_at: r.rented_at, due_at: r.due_at };
+
+function unpaidView(raw) {
+  if (raw == null || raw === "") return null;
+  let data = raw;
+  if (typeof raw === "string") {
+    try { data = JSON.parse(raw); } catch { return null; }
+  }
+  if (!data || typeof data !== "object") return null;
+  const amount = Math.round(Number(data.amount));
+  const returnedAt = Math.round(Number(data.returnedAt));
+  const dueAt = Math.round(Number(data.dueAt));
+  const slot = Math.round(Number(data.slot));
+  const rentalId = String(data.rentalId || "").slice(0, 80);
+  const station = String(data.station || "").slice(0, 8);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 10000000) return null;
+  if (!rentalId || !Number.isFinite(returnedAt) || returnedAt <= 0) return null;
+  if (!Number.isFinite(dueAt) || dueAt < 0) return null;
+  if (!station || !Number.isFinite(slot) || slot < 1 || slot > 6) return null;
+  return { amount, rentalId, returnedAt, dueAt, station, slot };
+}
+
+function mergeUnpaid(prev, incoming) {
+  const next = unpaidView(incoming);
+  const had = unpaidView(prev);
+  if (!next) return had;
+  if (had && had.rentalId === next.rentalId) return had;
+  if (!had) return next;
+  return { ...next, amount: Math.min(10000000, had.amount + next.amount) };
+}
 function loadCardIssuers() {
   const src = fs.readFileSync(path.join(__dirname, "public/js/card-issuers.js"), "utf8");
   const list = JSON.parse(src.slice(src.indexOf("["), src.lastIndexOf("]") + 1));
@@ -295,6 +334,21 @@ function requireDeviceKey(req, res, next) {
   next();
 }
 
+function studentFromReq(req, res) {
+  const t = (req.headers.authorization || "").replace("Bearer ", "");
+  const s = sessions.get(t);
+  if (!s || s.exp < Date.now()) {
+    bad(res, "로그인이 필요해요.", 401);
+    return null;
+  }
+  const u = q.getStudent.get(s.id);
+  if (!u) {
+    bad(res, "사용자를 찾을 수 없어요.", 404);
+    return null;
+  }
+  return u;
+}
+
 // ---------- 앱 ----------
 const sessions = new Map();
 const app = express();
@@ -360,6 +414,7 @@ app.post("/api/login", (req, res) => {
     paymentMethods: studentWallet(u).paymentMethods,
     defaultPaymentId: studentWallet(u).defaultPaymentId,
     activeRental: rentalView(q.activeRental.get(u.student_id)) || null,
+    unpaidFee: unpaidView(u.unpaid_fee),
   });
 });
 
@@ -377,6 +432,7 @@ app.get("/api/me", (req, res) => {
     paymentMethod: studentWallet(u).paymentMethod,
     paymentMethods: studentWallet(u).paymentMethods,
     defaultPaymentId: studentWallet(u).defaultPaymentId,
+    unpaidFee: unpaidView(u.unpaid_fee),
   });
 });
 
@@ -418,8 +474,30 @@ app.post("/api/payment-method", (req, res) => {
   });
 });
 
+app.post("/api/unpaid", (req, res) => {
+  const u = studentFromReq(req, res);
+  if (!u) return;
+  const incoming = unpaidView(req.body);
+  if (!incoming) return bad(res, "미납액을 기록할 수 없어요.");
+  const stored = mergeUnpaid(u.unpaid_fee, incoming);
+  if (!stored || stored.amount > 10000000) return bad(res, "미납액을 기록할 수 없어요.");
+  q.setUnpaid.run(JSON.stringify(stored), u.student_id);
+  res.json({ ok: true, unpaidFee: stored });
+});
+
+app.post("/api/unpaid/settle", (req, res) => {
+  const u = studentFromReq(req, res);
+  if (!u) return;
+  q.setUnpaid.run(null, u.student_id);
+  res.json({ ok: true, unpaidFee: null });
+});
+
 app.get("/api/students/:id/rental", (req, res) => {
-  res.json({ activeRental: rentalView(q.activeRental.get(req.params.id)) || null });
+  const student = q.getStudent.get(req.params.id);
+  res.json({
+    activeRental: rentalView(q.activeRental.get(req.params.id)) || null,
+    unpaidFee: unpaidView(student && student.unpaid_fee),
+  });
 });
 
 app.get("/api/station/:code", (req, res) => {
@@ -438,6 +516,10 @@ app.post("/api/rent", (req, res) => {
   const u = q.umbrellaAt.get(station, slot);
   if (!u || u.status === "out") return bad(res, "그 칸은 이미 대여 중이에요.", 409);
   if (q.activeRental.get(studentId)) return bad(res, "이미 대여 중인 우산이 있어요. 먼저 반납해 주세요.", 409);
+  const student = q.getStudent.get(studentId);
+  if (student && unpaidView(student.unpaid_fee)) {
+    return bad(res, "미납액이 있어 대여할 수 없어요. 먼저 결제해 주세요.", 409);
+  }
 
   const now = Date.now();
   const due_at = now + RENT_LIMIT_MS;
@@ -518,6 +600,40 @@ app.get("/api/admin/umbrellas", (_req, res) => {
 });
 app.get("/api/admin/rentals", (_req, res) => {
   res.json({ rentals: q.listActiveRentals.all().map((r) => ({ ...r, studentId: r.student_id })) });
+});
+app.get("/api/admin/students/:id/rentals", (req, res) => {
+  const studentId = String(req.params.id || "").trim();
+  if (!/^\d{6,10}$/.test(studentId)) return bad(res, "학번을 확인해 주세요.");
+  const rentals = q.listRentalsByStudent.all(studentId).map((r) => ({
+    id: r.id,
+    studentId: r.student_id,
+    station: r.station,
+    slot: r.slot,
+    rented_at: r.rented_at,
+    due_at: r.due_at,
+    returned_at: r.returned_at || null,
+    return_station: null,
+    return_slot: null,
+    status: r.returned_at ? "returned" : "active",
+  }));
+  res.json({ rentals });
+});
+app.post("/api/admin/students/delete", (req, res) => {
+  const studentId = String((req.body && req.body.studentId) || "").trim();
+  if (!/^\d{6,10}$/.test(studentId)) return bad(res, "학번을 확인해 주세요.");
+  const u = q.getStudent.get(studentId);
+  if (!u) return bad(res, "사용자를 찾을 수 없어요.", 404);
+  db.exec("BEGIN");
+  try {
+    q.freeUmbrellasByStudent.run(studentId);
+    q.deleteRentalsByStudent.run(studentId);
+    q.deleteStudentById.run(studentId);
+    db.exec("COMMIT");
+    res.json({ ok: true, studentId });
+  } catch (e) {
+    db.exec("ROLLBACK");
+    bad(res, "사용자를 삭제하지 못했어요.", 500);
+  }
 });
 app.post("/api/admin/umbrella-status", (req, res) => {
   const station = toStation(req.body && req.body.station);

@@ -21,6 +21,11 @@
     <div id="userBox">불러오는 중…</div>
   </div>
 
+  <div class="card" id="historyCard" hidden>
+    <h2 id="historyTitle">대여 기록</h2>
+    <div id="historyBox">기록을 불러오는 중…</div>
+  </div>
+
   <div class="card">
     <h2>활성 대여</h2>
     <div id="rentBox">불러오는 중…</div>
@@ -28,18 +33,19 @@
 
   <p><a href="/">← 앱으로</a> · <a href="/device.html">장치 테스트</a></p>
 
-<script src="/firebase-config.js"></script>
+<script src="/firebase-config.js?v=3"></script>
 <script type="module">
 import {
-  getMode, loginDevice, listAllUmbrellas, listStudents, listActiveRentals,
-  setUmbrellaStatus, seedInventory, friendlyError, stationQr, stationLabel,
-} from "/js/backend.js?v=108";
+  getMode, loginDevice, listAllUmbrellas, listStudents, listActiveRentals, listStudentRentals,
+  setUmbrellaStatus, deleteStudent, seedInventory, friendlyError, stationQr, stationLabel,
+} from "/js/backend.js?v=120";
 
 const $ = (id) => document.getElementById(id);
 const fmt = (ts) => (ts ? new Date(ts).toLocaleString("ko-KR") : "-");
 const esc = (v) => String(v ?? "-").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const place = (code) => esc(stationLabel(code));
 const placeSlot = (code, slot) => esc(`${stationQr(code)}-${slot}`);
+let historyUser = null;
 
 function table(headers, rows, emptyText) {
   const head = headers.map((h) => `<th>${h}</th>`).join("");
@@ -47,6 +53,44 @@ function table(headers, rows, emptyText) {
     ? rows.map((cells) => `<tr>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${headers.length}">${emptyText}</td></tr>`;
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function userKey(u) {
+  return String((u && (u.uid || u.studentId)) || "");
+}
+
+function rentalPlace(station, slot) {
+  if (!station && !slot) return "-";
+  if (station && slot) return placeSlot(station, slot);
+  return place(station);
+}
+
+async function renderHistory(user) {
+  const card = $("historyCard");
+  card.hidden = false;
+  $("historyTitle").textContent = `${user.name || "사용자"} (${user.studentId || "-"}) 대여 기록`;
+  try {
+    const rows = await listStudentRentals({ uid: user.uid || "", studentId: user.studentId || "" });
+    if (userKey(historyUser) !== userKey(user)) return;
+    $("historyBox").innerHTML = table(
+      ["상태", "대여 위치", "대여 시각", "기한", "반납 시각", "반납 위치"],
+      rows.map((r) => {
+        const done = !!(r.returned_at || r.status === "returned");
+        return [
+          done ? "반납완료" : "대여중",
+          rentalPlace(r.station, r.slot),
+          fmt(r.rented_at),
+          fmt(r.due_at),
+          done ? fmt(r.returned_at) : "-",
+          done ? rentalPlace(r.return_station, r.return_slot) : "-",
+        ];
+      }),
+      "대여 기록 없음"
+    );
+  } catch (e) {
+    if (userKey(historyUser) !== userKey(user)) return;
+    $("historyBox").textContent = friendlyError(e);
+  }
 }
 
 async function loadAll() {
@@ -83,7 +127,7 @@ async function loadAll() {
   });
 
   $("userBox").innerHTML = table(
-    ["학번", "이름", "재학생 인증", "결제수단", "가입", "활성 대여"],
+    ["학번", "이름", "재학생 인증", "결제수단", "가입", "활성 대여", "관리"],
     users.map((u) => [
       esc(u.studentId), esc(u.name), u.lmsVerified ? "인증됨" : "미인증",
       (u.paymentRegistered || u.paymentMethod) ? "등록됨" : "미등록",
@@ -91,9 +135,47 @@ async function loadAll() {
       u.activeRental
         ? `${placeSlot(u.activeRental.station, u.activeRental.slot)} · ${fmt(u.activeRental.rented_at)}`
         : "-",
+      `<span class="row-actions"><button class="ghost" type="button" data-act="history" data-uid="${esc(u.uid || "")}" data-sid="${esc(u.studentId || "")}" data-name="${esc(u.name || "")}">기록</button><button class="danger" type="button" data-act="delete" data-uid="${esc(u.uid || "")}" data-sid="${esc(u.studentId || "")}" data-name="${esc(u.name || "")}">삭제</button></span>`,
     ]),
     "사용자 없음 (앱에서 회원가입)"
   );
+  $("userBox").querySelectorAll("button[data-act]").forEach((btn) => {
+    btn.onclick = async () => {
+      const name = btn.dataset.name || "이 사용자";
+      const sid = btn.dataset.sid || "";
+      const user = { uid: btn.dataset.uid || "", studentId: sid, name };
+      if (btn.dataset.act === "history") {
+        historyUser = user;
+        $("historyBox").textContent = "기록을 불러오는 중…";
+        await renderHistory(user);
+        $("historyCard").scrollIntoView({ block: "nearest" });
+        return;
+      }
+      const ok = confirm(`${name} (${sid}) 계정을 삭제할까요?\n로그인 계정과 대여 기록도 함께 지워집니다.`);
+      if (!ok) return;
+      btn.disabled = true;
+      try {
+        await deleteStudent({ uid: user.uid, studentId: sid });
+        if (historyUser && userKey(historyUser) === userKey(user)) {
+          historyUser = null;
+          $("historyCard").hidden = true;
+        }
+        await loadAll();
+      } catch (e) {
+        alert(friendlyError(e));
+        btn.disabled = false;
+      }
+    };
+  });
+
+  if (historyUser) {
+    const still = users.find((u) => userKey(u) === userKey(historyUser));
+    if (still) renderHistory(still);
+    else {
+      historyUser = null;
+      $("historyCard").hidden = true;
+    }
+  }
 
   $("rentBox").innerHTML = table(
     ["학번", "위치", "대여시각", "기한"],

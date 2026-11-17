@@ -75,6 +75,28 @@ service cloud.firestore {
           || (request.resource.data.paymentMethods.size() > 4 && request.resource.data.paymentMethods[4].id == request.resource.data.defaultPaymentId)
         );
     }
+    function validUnpaidCharge(fee) {
+      return fee.keys().hasOnly(['amount', 'rentalId', 'returnedAt', 'dueAt', 'station', 'slot'])
+        && fee.amount is int
+        && fee.amount > 0
+        && fee.amount <= 10000000
+        && fee.rentalId is string
+        && fee.rentalId.size() > 0
+        && fee.rentalId.size() <= 80
+        && fee.returnedAt is int
+        && fee.returnedAt > 0
+        && fee.dueAt is int
+        && fee.dueAt >= 0
+        && fee.station is string
+        && fee.station.size() > 0
+        && fee.station.size() <= 8
+        && fee.slot is int
+        && fee.slot >= 1
+        && fee.slot <= 6;
+    }
+    function owedBefore() {
+      return 'unpaidFee' in resource.data && resource.data.unpaidFee != null;
+    }
 
     // 사용자 프로필 — 본인 또는 device(관리)만
     match /students/{uid} {
@@ -91,14 +113,20 @@ service cloud.firestore {
         || (isOwner(uid)
           && request.resource.data.studentId == resource.data.studentId
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['activeRental', 'updated_at', 'name', 'paymentMethod', 'paymentMethods', 'defaultPaymentId'])
+              .hasOnly(['activeRental', 'updated_at', 'name', 'paymentMethod', 'paymentMethods', 'defaultPaymentId', 'unpaidFee'])
           && (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentMethod', 'paymentMethods', 'defaultPaymentId'])
             || (
               validPayList(request.resource.data.paymentMethods)
               && payWalletOk()
             )
-          ));
+          )
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unpaidFee'])
+            || request.resource.data.unpaidFee == null
+            || validUnpaidCharge(request.resource.data.unpaidFee)
+          )
+          && !(request.resource.data.activeRental != null && owedBefore()));
     }
 
     // 우산 슬롯 — 학생은 대여(in→out)·반납(out→in)만, 생성/기타는 device

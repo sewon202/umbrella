@@ -6,7 +6,9 @@ import {
   restoreSession,
   logoutUser,
   getStationInventory,
-  getMyActiveRental,
+  getMyHold,
+  recordUnpaidFee,
+  settleUnpaidFee,
   rentUmbrella,
   returnUmbrella,
   watchDeviceEvents,
@@ -16,6 +18,7 @@ import {
   TOTAL_SLOTS,
   RENT_LIMIT_MS,
   overdueFeeWon,
+  unpaidView,
   savePaymentWallet,
   newPaymentId,
   paymentWallet,
@@ -23,7 +26,7 @@ import {
   paymentMethodLabel,
   CARD_ISSUERS,
   STATIONS,
-} from "/js/backend.js?v=117";
+} from "/js/backend.js?v=120";
 import { startQrScan, stopQrScan, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=59";
 import { createDoorSync } from "/js/door-sync.js?v=2";
 import {
@@ -55,6 +58,7 @@ function applyUser(res) {
     name: res.name,
     uid: res.uid,
     activeRental: rental,
+    unpaidFee: unpaidView(res.unpaidFee),
     lmsVerified: res.lmsVerified === true,
     lmsVerifiedAt: res.lmsVerifiedAt || null,
     paymentMethods: wallet.paymentMethods,
@@ -497,15 +501,73 @@ function syncUserChrome() {
   if (codeEl) codeEl.textContent = `대여소 코드 ${code}`;
 
   const renting = !!(state.user.activeRental);
+  const owed = unpaidAmount();
+  const blocked = !renting && owed > 0;
   const btn = $("homeRentBtn");
   const label = btn && btn.querySelector(".home-rent-label");
   const sub = btn && btn.querySelector(".home-rent-sub");
+  const hero = document.querySelector("#v-home .hero-sub");
+  if (hero) {
+    hero.textContent = blocked
+      ? "미납액을 결제하면 다시 대여할 수 있어요."
+      : "QR을 스캔하거나 아래 버튼으로 대여를 시작해요.";
+  }
   if (btn) {
-    btn.setAttribute("aria-label", renting ? "우산 반납하기" : "우산 대여하기");
+    btn.disabled = blocked;
+    btn.setAttribute("aria-label", renting ? "우산 반납하기" : blocked ? "우산 대여하기, 미납액 결제가 필요해요" : "우산 대여하기");
     btn.classList.toggle("is-return", renting);
+    btn.classList.toggle("is-blocked", blocked);
   }
   if (label) label.textContent = renting ? "우산 반납하기" : "우산 대여하기";
-  if (sub) sub.textContent = renting ? "QR 스캔으로 반납" : "QR 스캔으로 시작";
+  if (sub) sub.textContent = renting ? "QR 스캔으로 반납" : blocked ? "미납액 결제 후 가능" : "QR 스캔으로 시작";
+  const due = $("homeDue");
+  if (due) due.hidden = !blocked;
+  const dueAmount = $("homeDueAmount");
+  if (dueAmount) dueAmount.textContent = `${owed.toLocaleString("ko-KR")}원`;
+  const tabQr = $("tabQr");
+  if (tabQr) tabQr.disabled = blocked;
+}
+
+function unpaidAmount() {
+  const fee = state.user && unpaidView(state.user.unpaidFee);
+  return fee ? fee.amount : 0;
+}
+
+function rentBlocked() {
+  return unpaidAmount() > 0 && !hasActiveRental();
+}
+
+async function rememberUnpaid(charge) {
+  let last = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await recordUnpaidFee(charge);
+    } catch (e) {
+      last = e;
+      await wait(250);
+    }
+  }
+  throw last || new Error("미납액을 기록하지 못했어요.");
+}
+
+async function payOutstanding() {
+  const owed = unpaidAmount();
+  if (!owed || state.paying) return;
+  state.paying = true;
+  try {
+    await askOverduePayment(owed, {
+      reason: "이전에 내지 않은 추가요금이에요. 결제해야 다시 대여할 수 있어요.",
+      onPaid: async () => {
+        state.user.unpaidFee = await settleUnpaidFee();
+      },
+    });
+    syncUserChrome();
+  } catch (e) {
+    setMsg(friendlyError(e));
+  } finally {
+    state.paying = false;
+    syncUserChrome();
+  }
 }
 
 /** 반납은 대여소가 달라도 가능 — 활성 대여만 있으면 반납 선택 모드 */
@@ -517,12 +579,19 @@ async function refreshInventory() {
   const inv = await getStationInventory(state.station);
   state.slots = inv.slots;
   if (state.user) {
-    state.user.activeRental = await getMyActiveRental(state.user.uid);
+    const hold = await getMyHold(state.user.uid);
+    state.user.activeRental = hold.activeRental;
+    state.user.unpaidFee = hold.unpaidFee;
     syncUserChrome();
   }
 }
 
 async function enterStation(code) {
+  if (rentBlocked()) {
+    syncUserChrome();
+    show("v-home", { tab: "home" });
+    return;
+  }
   const station = parseStationCode(code);
   if (!station) {
     if ($("v-code").classList.contains("on")) {
@@ -945,6 +1014,11 @@ async function go() {
   if (!state.selected || state.busy) return;
   const slot = state.selected;
   const isReturn = hasActiveRental();
+  if (!isReturn && rentBlocked()) {
+    syncUserChrome();
+    show("v-home", { tab: "home" });
+    return;
+  }
   if (isReturn && state.slots[slot] !== "out") {
     setMsg("이 칸에는 이미 우산이 있어 반납할 수 없어요.");
     render();
@@ -993,7 +1067,21 @@ async function go() {
         if (fee > 0) {
           state.paying = true;
           try {
-            paid = await askOverduePayment(fee);
+            const dueAt = Number(rentalSnap && rentalSnap.due_at) || (Number(rentalSnap && rentalSnap.rented_at) + RENT_LIMIT_MS);
+            state.user.unpaidFee = await rememberUnpaid({
+              amount: fee,
+              rentalId: String((rentalSnap && rentalSnap.rentalId) || returnedAt),
+              returnedAt,
+              dueAt,
+              station: (rentalSnap && rentalSnap.station) || state.station,
+              slot: Number((rentalSnap && rentalSnap.slot) || slot),
+            });
+            syncUserChrome();
+            paid = await askOverduePayment(fee, {
+              onPaid: async () => {
+                state.user.unpaidFee = await settleUnpaidFee();
+              },
+            });
           } finally {
             state.paying = false;
           }
@@ -1449,12 +1537,14 @@ function bindPayTyping(prefix, cardPrefix) {
   pw2.oninput = () => { pw2.value = digitsOnly(pw2.value, 2); };
 }
 
-function askOverduePayment(fee) {
+function askOverduePayment(fee, { reason, onPaid } = {}) {
   const overlay = $("payOverlay");
   const form = $("payOverlayForm");
   const err = $("payOverlayErr");
   const btn = $("payOverlaySubmit");
   const amount = `${fee.toLocaleString("ko-KR")}원`;
+  const sub = overlay.querySelector(".pg-sub");
+  if (sub) sub.textContent = reason || "반납 기한이 지나 추가요금이 생겼어요.";
   $("payTitle").textContent = amount;
   err.textContent = "";
   btn.disabled = false;
@@ -1523,6 +1613,7 @@ function askOverduePayment(fee) {
         }
         btn.textContent = "결제 중…";
         await wait(1100);
+        if (onPaid) await onPaid();
         const paid = state.user.paymentMethod;
         btn.onclick = null;
         await hideOverlay();
@@ -1738,6 +1829,11 @@ async function openQrCamera({ session = ++qrSession, whenStable = null, force = 
 }
 
 function presentQr({ instant = false } = {}) {
+  if (rentBlocked()) {
+    syncUserChrome();
+    show("v-home", { tab: "home" });
+    return;
+  }
   if (cameraIsLive()) return;
   if (qrBusy) return;
   qrBusy = true;
@@ -1874,8 +1970,8 @@ async function openMapSheet(station) {
     planned.hidden = true;
     $("mapRentN").textContent = "…";
     $("mapReturnN").textContent = "…";
-    goRent.disabled = false;
-    goRent.textContent = "이 대여소 QR 스캔";
+    goRent.disabled = rentBlocked();
+    goRent.textContent = rentBlocked() ? "미납액 결제 후 대여" : "이 대여소 QR 스캔";
   } else {
     stats.hidden = true;
     planned.hidden = false;
@@ -1962,6 +2058,11 @@ function goTab(tab) {
     // 서버 activeRental 재확인 (로컬 state와 어긋난 경우 보정)
     refreshInventory().catch(() => {});
   } else if (tab === "qr") {
+    if (rentBlocked()) {
+      syncUserChrome();
+      show("v-home", { tab: "home" });
+      return;
+    }
     presentQr();
   } else if (tab === "settings") {
     closeQrCamera();
@@ -2106,6 +2207,7 @@ $("tabHome").onclick = () => goTab("home");
 $("tabQr").onclick = () => goTab("qr");
 $("tabSettings").onclick = () => goTab("settings");
 $("homeRentBtn").onclick = () => goTab("qr");
+$("homeDuePay").onclick = () => payOutstanding();
 $("homeMapBtn").onclick = () => openCampusMap();
 $("returnDoneRent").onclick = () => goTab("qr");
 $("returnDoneHome").onclick = () => goTab("home");
@@ -2136,9 +2238,16 @@ $("codeSubmit").onclick = submitCodeEntry;
 $("codeInput").onkeydown = (e) => {
   if (e.key === "Enter") submitCodeEntry();
 };
+$("codeInput").addEventListener("beforeinput", (e) => {
+  if (e.inputType !== "insertText" && e.inputType !== "insertCompositionText") return;
+  const incoming = e.data || "";
+  if (!incoming || /[^A-Za-z0-9]/.test(incoming)) e.preventDefault();
+});
 $("codeInput").oninput = () => {
   $("codeErr").textContent = "";
-  $("codeInput").value = $("codeInput").value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const el = $("codeInput");
+  const next = el.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+  if (el.value !== next) el.value = next;
 };
 
 $("pickBack").onclick = () => goTab("qr");

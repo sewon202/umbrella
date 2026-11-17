@@ -25,5 +25,6 @@ window.UMBRELLA = {
   // - 브리지: device-secrets.local.js 또는 DEVICE_PASSWORD
   // - admin/device.html: 로그인 시 입력
   deviceEmail: "device@umbrella.local",
-  verifyStudentUrl: "https://asia-northeast3-umbrella-c8cf0.cloudfunctions.net/verifyStudent"
+  verifyStudentUrl: "https://asia-northeast3-umbrella-c8cf0.cloudfunctions.net/verifyStudent",
+  deleteStudentUrl: "https://asia-northeast3-umbrella-c8cf0.cloudfunctions.net/deleteStudent"
 };

@@ -70,3 +70,105 @@ exports.verifyStudent = onRequest(
     }
   }
 );
+
+const DEVICE_EMAIL = "device@umbrella.local";
+
+async function deleteInBatches(db, docs) {
+  for (let i = 0; i < docs.length; i += 400) {
+    const batch = db.batch();
+    docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+}
+
+exports.deleteStudent = onRequest(
+  {
+    region: "asia-northeast3",
+    cors: true,
+    invoker: "public",
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "POST만 가능해요." });
+      return;
+    }
+    const header = String(req.get("Authorization") || "");
+    const idToken = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (!idToken) {
+      res.status(401).json({ error: "로그인이 필요해요." });
+      return;
+    }
+    try {
+      const decoded = await getAuth().verifyIdToken(idToken);
+      const email = String(decoded.email || "").toLowerCase();
+      if (email !== DEVICE_EMAIL) {
+        res.status(403).json({ error: "device 계정만 사용자를 삭제할 수 있어요." });
+        return;
+      }
+      const uid = String((req.body && req.body.uid) || "").trim();
+      if (!uid || uid.length > 128 || uid === decoded.uid) {
+        res.status(400).json({ error: uid === decoded.uid ? "device 계정은 삭제할 수 없어요." : "삭제할 사용자를 지정해 주세요." });
+        return;
+      }
+
+      const auth = getAuth();
+      let target = null;
+      try {
+        target = await auth.getUser(uid);
+      } catch (err) {
+        if (!err || err.code !== "auth/user-not-found") throw err;
+      }
+      if (target && String(target.email || "").toLowerCase() === DEVICE_EMAIL) {
+        res.status(400).json({ error: "device 계정은 삭제할 수 없어요." });
+        return;
+      }
+
+      const db = getFirestore();
+      const studentRef = db.doc(`students/${uid}`);
+      const studentSnap = await studentRef.get();
+      const student = studentSnap.exists ? studentSnap.data() || {} : null;
+      const [byUid, byId] = await Promise.all([
+        db.collection("rentals").where("studentUid", "==", uid).get(),
+        student && student.studentId
+          ? db.collection("rentals").where("studentId", "==", String(student.studentId)).get()
+          : Promise.resolve({ docs: [] }),
+      ]);
+      const rentalDocs = [];
+      const seen = new Set();
+      for (const d of [...byUid.docs, ...byId.docs]) {
+        if (seen.has(d.id)) continue;
+        seen.add(d.id);
+        rentalDocs.push(d);
+      }
+      if (!studentSnap.exists && !target && !rentalDocs.length) {
+        res.status(404).json({ error: "사용자를 찾을 수 없어요." });
+        return;
+      }
+
+      const active = student && student.activeRental;
+      if (active && active.station && active.slot && student.studentId) {
+        const umbrellaRef = db.doc(`umbrellas/${active.station}-${active.slot}`);
+        const umbrellaSnap = await umbrellaRef.get();
+        const rentedBy = umbrellaSnap.exists ? umbrellaSnap.data().rented_by : null;
+        if (rentedBy === student.studentId) {
+          await umbrellaRef.set({
+            status: "in",
+            rented_by: null,
+            rented_at: null,
+            updated_at: Date.now(),
+          }, { merge: true });
+        }
+      }
+
+      await deleteInBatches(db, rentalDocs);
+      if (studentSnap.exists) await studentRef.delete();
+      if (target) await auth.deleteUser(uid);
+      res.json({ ok: true, uid });
+    } catch (err) {
+      console.error("deleteStudent", err && err.code ? err.code : "error");
+      res.status(500).json({ error: "사용자를 삭제하지 못했어요." });
+    }
+  }
+);

@@ -49,6 +49,37 @@ export function overdueFeeWon(overdueMs) {
   return Math.ceil(overdueMs / OVERDUE_FEE_UNIT_MS) * OVERDUE_FEE_WON;
 }
 
+/** 학생 문서에 남는 미납 추가요금. 없거나 형식이 깨지면 null. */
+export function unpaidView(raw) {
+  if (raw == null || raw === "") return null;
+  let data = raw;
+  if (typeof raw === "string") {
+    try { data = JSON.parse(raw); } catch { return null; }
+  }
+  if (!data || typeof data !== "object") return null;
+  const amount = Math.round(Number(data.amount));
+  const returnedAt = Math.round(Number(data.returnedAt));
+  const dueAt = Math.round(Number(data.dueAt));
+  const slot = Math.round(Number(data.slot));
+  const rentalId = String(data.rentalId || "").slice(0, 80);
+  const station = String(data.station || "").slice(0, 8);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 10000000) return null;
+  if (!rentalId || !Number.isFinite(returnedAt) || returnedAt <= 0) return null;
+  if (!Number.isFinite(dueAt) || dueAt < 0) return null;
+  if (!station || !Number.isFinite(slot) || slot < 1 || slot > 6) return null;
+  return { amount, rentalId, returnedAt, dueAt, station, slot };
+}
+
+/** 같은 반납을 두 번 기록해도 금액이 늘지 않게 둔다. */
+export function mergeUnpaid(prev, incoming) {
+  const next = unpaidView(incoming);
+  const had = unpaidView(prev);
+  if (!next) return had;
+  if (had && had.rentalId === next.rentalId) return had;
+  if (!had) return next;
+  return { ...next, amount: Math.min(10000000, had.amount + next.amount) };
+}
+
 import { CARD_ISSUERS } from "/js/card-issuers.js?v=110";
 
 export { CARD_ISSUERS };
@@ -227,6 +258,7 @@ function createLocalBackend() {
       const user = {
         studentId, name: r.name, uid: studentId,
         activeRental: r.activeRental || null,
+        unpaidFee: unpaidView(r.unpaidFee),
         lmsVerified: r.lmsVerified === true,
         lmsVerifiedAt: r.lmsVerifiedAt || null,
         ...paymentWallet(r),
@@ -265,6 +297,7 @@ function createLocalBackend() {
           name: me.name || s.name,
           uid: s.uid || s.studentId,
           activeRental,
+          unpaidFee: unpaidView(me.unpaidFee),
           lmsVerified: me.lmsVerified === true,
           lmsVerifiedAt: me.lmsVerifiedAt || null,
           ...paymentWallet(me),
@@ -283,6 +316,23 @@ function createLocalBackend() {
     async getMyActiveRental(studentId) {
       const r = await api("GET", `/api/students/${studentId}/rental`);
       return r.activeRental || null;
+    },
+    async getMyHold(studentId) {
+      const r = await api("GET", `/api/students/${studentId}/rental`);
+      return {
+        activeRental: r.activeRental || null,
+        unpaidFee: unpaidView(r.unpaidFee),
+      };
+    },
+    async recordUnpaidFee(charge) {
+      const headers = await this.getAuthHeaders();
+      const r = await api("POST", "/api/unpaid", charge, headers);
+      return unpaidView(r.unpaidFee);
+    },
+    async settleUnpaidFee() {
+      const headers = await this.getAuthHeaders();
+      await api("POST", "/api/unpaid/settle", {}, headers);
+      return null;
     },
     async rent({ station, slot, studentId }) {
       assertSlot(slot);
@@ -308,8 +358,15 @@ function createLocalBackend() {
       return paymentWallet(saved);
     },
     async listStudents() { return (await api("GET", "/api/admin/students")).students; },
+    async deleteStudent({ studentId }) {
+      return api("POST", "/api/admin/students/delete", { studentId });
+    },
     async listAllUmbrellas() { return (await api("GET", "/api/admin/umbrellas")).umbrellas; },
     async listActiveRentals() { return (await api("GET", "/api/admin/rentals")).rentals; },
+    async listStudentRentals({ studentId }) {
+      const r = await api("GET", `/api/admin/students/${encodeURIComponent(studentId)}/rentals`);
+      return r.rentals || [];
+    },
     async setUmbrellaStatus(p) { return api("POST", "/api/admin/umbrella-status", p); },
     async seedInventory() {},
     async fetchNextCommand(station = "A1") {
@@ -381,6 +438,7 @@ function createFirebaseBackend() {
       name: data.name || user.displayName || "학생",
       uid: user.uid,
       activeRental: data.activeRental || null,
+      unpaidFee: unpaidView(data.unpaidFee),
       lmsVerified: data.lmsVerified === true,
       lmsVerifiedAt: data.lmsVerifiedAt || null,
       ...paymentWallet(data),
@@ -496,6 +554,40 @@ function createFirebaseBackend() {
       return snap.exists() ? snap.data().activeRental || null : null;
     },
 
+    async getMyHold(uid) {
+      const snap = await getDoc(doc(db, "students", uid || requireUser().uid));
+      const data = snap.exists() ? snap.data() : {};
+      return {
+        activeRental: data.activeRental || null,
+        unpaidFee: unpaidView(data.unpaidFee),
+      };
+    },
+
+    async recordUnpaidFee(charge) {
+      const user = requireUser();
+      const incoming = unpaidView(charge);
+      if (!incoming) throw new Error("미납액을 기록할 수 없어요.");
+      const ref = doc(db, "students", user.uid);
+      const stored = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        const prev = snap.exists() ? snap.data().unpaidFee : null;
+        const next = mergeUnpaid(prev, incoming);
+        if (!next) throw new Error("미납액을 기록할 수 없어요.");
+        tx.set(ref, { unpaidFee: next, updated_at: Date.now() }, { merge: true });
+        return next;
+      });
+      return stored;
+    },
+
+    async settleUnpaidFee() {
+      const user = requireUser();
+      await updateDoc(doc(db, "students", user.uid), {
+        unpaidFee: null,
+        updated_at: Date.now(),
+      });
+      return null;
+    },
+
     /** 대여: 트랜잭션으로 슬롯 상태·대여기록·사용자·명령을 원자적으로 기록 */
     async rent({ station, slot, studentId }) {
       assertSlot(slot);
@@ -512,6 +604,9 @@ function createFirebaseBackend() {
         if (u.status === "out") throw new Error("그 칸은 이미 대여 중이에요.");
         if (sSnap.exists() && sSnap.data().activeRental) {
           throw new Error("이미 대여 중인 우산이 있어요. 먼저 반납해 주세요.");
+        }
+        if (sSnap.exists() && unpaidView(sSnap.data().unpaidFee)) {
+          throw new Error("미납액이 있어 대여할 수 없어요. 먼저 결제해 주세요.");
         }
         tx.set(uRef, {
           station, slot, status: "out",
@@ -600,6 +695,26 @@ function createFirebaseBackend() {
       return (await getDocs(collection(db, "students"))).docs.map((d) => ({ uid: d.id, ...d.data() }));
     },
 
+    async deleteStudent({ uid }) {
+      requireUser();
+      if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) {
+        throw new Error("device 계정만 사용자를 삭제할 수 있어요.");
+      }
+      const url = cfg.deleteStudentUrl
+        || (fb.projectId ? `https://asia-northeast3-${fb.projectId}.cloudfunctions.net/deleteStudent` : "");
+      if (!url) throw new Error("사용자 삭제 주소가 설정되지 않았어요.");
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch { data = {}; }
+      if (!res.ok) throw new Error(data.error || "사용자를 삭제하지 못했어요.");
+      return data;
+    },
+
     async listAllUmbrellas() {
       requireUser();
       const rows = (await getDocs(collection(db, "umbrellas"))).docs.map(docData);
@@ -620,6 +735,32 @@ function createFirebaseBackend() {
         limit(50)
       );
       return (await getDocs(q)).docs.map(docData);
+    },
+
+    async listStudentRentals({ uid, studentId }) {
+      requireUser();
+      if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) {
+        throw new Error("device 계정만 대여 기록을 볼 수 있어요.");
+      }
+      const snaps = [];
+      if (uid) {
+        snaps.push(getDocs(query(collection(db, "rentals"), where("studentUid", "==", uid))));
+      }
+      if (studentId) {
+        snaps.push(getDocs(query(collection(db, "rentals"), where("studentId", "==", String(studentId)))));
+      }
+      const found = await Promise.all(snaps);
+      const rows = [];
+      const seen = new Set();
+      for (const snap of found) {
+        for (const d of snap.docs) {
+          if (seen.has(d.id)) continue;
+          seen.add(d.id);
+          rows.push(docData(d));
+        }
+      }
+      rows.sort((a, b) => (Number(b.rented_at) || 0) - (Number(a.rented_at) || 0));
+      return rows;
     },
 
     async setUmbrellaStatus({ station, slot, status }) {
@@ -796,13 +937,18 @@ export const loginDevice = (password) => backend.loginDevice(password);
 export const logoutUser = () => backend.logout();
 export const getStationInventory = (s) => backend.getStationInventory(s);
 export const getMyActiveRental = (uid) => backend.getMyActiveRental(uid);
+export const getMyHold = (uid) => backend.getMyHold(uid);
+export const recordUnpaidFee = (charge) => backend.recordUnpaidFee(charge);
+export const settleUnpaidFee = () => backend.settleUnpaidFee();
 export const rentUmbrella = (p) => backend.rent(p);
 export const returnUmbrella = (p) => backend.return(p);
 export const openDoor = (p) => backend.openDoor(p);
 export const listStudents = () => backend.listStudents();
+export const deleteStudent = (p) => backend.deleteStudent(p);
 export const savePaymentWallet = (wallet) => backend.savePaymentWallet(wallet);
 export const listAllUmbrellas = () => backend.listAllUmbrellas();
 export const listActiveRentals = () => backend.listActiveRentals();
+export const listStudentRentals = (p) => backend.listStudentRentals(p);
 export const setUmbrellaStatus = (p) => backend.setUmbrellaStatus(p);
 export const seedInventory = () => backend.seedInventory();
 export const fetchNextCommand = (s) => backend.fetchNextCommand(s);
