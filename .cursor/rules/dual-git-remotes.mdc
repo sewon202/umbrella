@@ -1,14 +1,16 @@
 ---
-description: Always push commits to both origin (youjune) and sewon remotes
+description: origin (youjune) is canonical; sewon is a secondary mirror
 alwaysApply: true
 ---
 
-# Dual remotes — youjune (origin) + sewon
+# Dual remotes — youjune (origin) is the source of truth
 
 When the user asks to commit and/or push this repo:
 
-- Remotes: `origin` = `https://github.com/youjune2005/umbrella.git`, `sewon` = `https://github.com/sewon202/umbrella.git`.
-- After a successful local commit, push the same branch to **both** `origin` and `sewon` unless the user explicitly asks for only one.
-- Keep `main` tracking `origin/main` (do not leave upstream on `sewon` after `git push -u sewon`).
+- Remotes: `origin` = `https://github.com/youjune2005/umbrella.git` (**canonical**), `sewon` = `https://github.com/sewon202/umbrella.git` (**mirror only**).
+- `origin` / youjune always wins. Treat `origin/main` as the real history. `sewon` is updated to match it, not the other way around.
+- After a successful local commit, push **`origin` first**, then `sewon`, unless the user explicitly asks for only one.
+- Keep `main` tracking `origin/main` only. Never set upstream to `sewon`.
+- If `sewon` and `origin` diverge, prefer `origin`. Do not reset or rewrite local/`origin` to match `sewon`. To sync the mirror, push `origin`'s branch to `sewon` (ask before `--force` / `--force-with-lease` on `sewon`).
 - Do not commit `umbrella.db`.
 - Still follow authorship rules: Youjune Park only; never Cursor `Co-authored-by`.
