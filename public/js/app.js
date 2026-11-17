@@ -7,6 +7,8 @@ import {
   logoutUser,
   getStationInventory,
   getMyHold,
+  getMyRentals,
+  submitFaultReport,
   recordUnpaidFee,
   settleUnpaidFee,
   rentUmbrella,
@@ -26,7 +28,7 @@ import {
   paymentMethodLabel,
   CARD_ISSUERS,
   STATIONS,
-} from "/js/backend.js?v=120";
+} from "/js/backend.js?v=123";
 import { startQrScan, stopQrScan, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=59";
 import { createDoorSync } from "/js/door-sync.js?v=2";
 import {
@@ -241,6 +243,10 @@ const NAV_DEPTH = {
   "v-signup": 1,
   "v-home": 10,
   "v-settings": 10,
+  "v-guide": 14,
+  "v-history": 14,
+  "v-report": 14,
+  "v-history-detail": 15,
   "v-pay-list": 11,
   "v-pay": 12,
   "v-qr": 20,
@@ -284,6 +290,11 @@ function inferNavDir(fromId, toId) {
   if ((fromId === "v-pay" || fromId === "v-pay-list") && (toId === "v-settings" || toId === "v-home")) return "tab-left";
   if (fromId === "v-pay-list" && toId === "v-pay") return "tab-right";
   if (fromId === "v-pay" && toId === "v-pay-list") return "tab-left";
+  // 홈 → 안내/내역/신고: 탭 stagger로 들어오게
+  if (fromId === "v-home" && (toId === "v-guide" || toId === "v-history" || toId === "v-report")) return "tab-right";
+  if ((fromId === "v-guide" || fromId === "v-history" || fromId === "v-report") && toId === "v-home") return "tab-left";
+  if (fromId === "v-history" && toId === "v-history-detail") return "tab-right";
+  if (fromId === "v-history-detail" && (toId === "v-history" || toId === "v-home")) return "tab-left";
   // 반납 완료 → 홈: 설정→홈과 같은 탭 stagger
   if (toId === "v-home" && fromId === "v-return-done") return "tab-left";
   const tabFrom = TAB_ORDER[fromId];
@@ -366,9 +377,19 @@ function applyShowChrome(id, { tab, immersiveMode } = {}) {
   else if (id === "v-qr" || id === "v-code") setTabActive("qr");
 }
 
-function finishShow(id) {
+function finishShow(id, scrollY = 0) {
   const immersive = id === "v-qr" || id === "v-code" || id === "v-map";
-  if (!immersive) window.scrollTo(0, 0);
+  if (!immersive) {
+    const shell = id === "v-home" || id === "v-settings";
+    const y = Math.max(0, Number(scrollY) || 0);
+    if (shell) {
+      const main = document.querySelector("main");
+      if (main) main.scrollTop = y;
+      window.scrollTo(0, 0);
+    } else {
+      window.scrollTo(0, y);
+    }
+  }
   // QR/코드/지도: 배율 재계산 생략 — 뷰포트·키보드와 겹치면 줌처럼 보임
   if (immersive) return;
   requestAnimationFrame(() => {
@@ -449,6 +470,7 @@ function show(id, { tab, dir, instant } = {}) {
         const cleanup = () => {
           if (done) return;
           done = true;
+          const scrollY = to.scrollTop || 0;
           if (navCleanupTimer) {
             clearTimeout(navCleanupTimer);
             navCleanupTimer = 0;
@@ -462,7 +484,7 @@ function show(id, { tab, dir, instant } = {}) {
           navBusy = false;
           // 전환 끝난 뒤에야 qr-open/map-open 확정 — 배경 레이아웃 흔들림 방지
           applyShowChrome(id, { tab });
-          finishShow(id);
+          finishShow(id, scrollY);
           resolve();
         };
 
@@ -475,7 +497,12 @@ function show(id, { tab, dir, instant } = {}) {
         };
         to.addEventListener("animationend", onEnd);
         const payStagger = id === "v-pay" || id === "v-pay-list";
-        const cleanupMs = payStagger && (navDir === "tab-right" || navDir === "tab-left") ? 1560 : keys.ms;
+        let cleanupMs = keys.ms;
+        if (navDir === "tab-right" || navDir === "tab-left") {
+          if (payStagger) cleanupMs = 1500;
+          else if (id === "v-home") cleanupMs = 1300;
+          else cleanupMs = 1150;
+        }
         navCleanupTimer = setTimeout(cleanup, cleanupMs);
       });
     });
@@ -567,6 +594,227 @@ async function payOutstanding() {
   } finally {
     state.paying = false;
     syncUserChrome();
+  }
+}
+
+let historyRows = [];
+let historyDetail = null;
+
+function rentalKey(r) {
+  return String((r && (r.rentalId || r.id)) || "");
+}
+
+function feeStatusForRental(rental) {
+  const due = Number(rental && rental.due_at);
+  const returned = Number(rental && rental.returned_at);
+  if (!returned || !due || returned <= due) {
+    return { key: "none", label: "추가요금 없음", amount: 0 };
+  }
+  const amount = overdueFeeWon(returned - due);
+  const unpaid = unpaidView(state.user && state.user.unpaidFee);
+  if (unpaid && rentalKey(unpaid) === rentalKey(rental)) {
+    return { key: "owed", label: "추가요금 미납", amount: unpaid.amount || amount };
+  }
+  if (rental.fee_paid === false) {
+    return { key: "owed", label: "추가요금 미납", amount: Number(rental.fee_amount) || amount };
+  }
+  return { key: "paid", label: "추가요금 납부", amount: Number(rental.fee_amount) || amount };
+}
+
+function fmtWhen(ts) {
+  if (!ts) return "-";
+  return new Date(Number(ts)).toLocaleString("ko-KR", {
+    month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
+function placeLine(station, slot) {
+  const name = STATION_NAMES[station] || STATION_QR[station] || station || "-";
+  if (slot) return `${name} ${slot}번 칸`;
+  return name;
+}
+
+const HISTORY_UMBRELLA_ICO = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3c-3.2 0-5.8 2.2-6.6 5.1C3.7 8.4 2.5 9.9 2.5 11.7c0 .4.3.8.8.8h17.4c.4 0 .8-.4.8-.8 0-1.8-1.2-3.3-2.9-3.6C17.8 5.2 15.2 3 12 3z" fill="currentColor"/><path d="M12 12.5v7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 21.2c1.1 0 1.7-.7 1.7-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+
+function renderHistoryList(rows) {
+  const box = $("historyList");
+  const empty = $("historyEmpty");
+  if (!box) return;
+  historyRows = rows || [];
+  if (!historyRows.length) {
+    box.innerHTML = `<p class="history-empty" id="historyEmpty">이용 내역이 없어요.</p>`;
+    return;
+  }
+  box.innerHTML = historyRows.map((r, i) => {
+    const fee = feeStatusForRental(r);
+    const active = !(r.returned_at || r.status === "returned");
+    const title = active ? "대여 중" : "반납 완료";
+    const when = fmtWhen(r.returned_at || r.rented_at);
+    return `<button type="button" class="history-item" data-i="${i}">
+      <span class="history-item-ico">${HISTORY_UMBRELLA_ICO}</span>
+      <span class="history-item-body">
+        <p class="history-item-title">${title}</p>
+        <p class="history-item-sub">${when}</p>
+        <p class="history-item-fee is-${fee.key}">${fee.label}${fee.amount > 0 ? ` · ${fee.amount.toLocaleString("ko-KR")}원` : ""}</p>
+      </span>
+      <span class="history-item-chevron" aria-hidden="true">›</span>
+    </button>`;
+  }).join("");
+  box.querySelectorAll(".history-item").forEach((btn) => {
+    btn.onclick = () => openHistoryDetail(historyRows[Number(btn.dataset.i)]);
+  });
+  if (empty) empty.hidden = true;
+}
+
+async function openHistory() {
+  show("v-history");
+  const box = $("historyList");
+  if (box) box.innerHTML = `<p class="history-empty">불러오는 중…</p>`;
+  try {
+    const rows = await getMyRentals();
+    renderHistoryList(rows);
+  } catch (e) {
+    if (box) box.innerHTML = `<p class="history-empty">${friendlyError(e)}</p>`;
+  }
+}
+
+function openHistoryDetail(rental) {
+  if (!rental) return;
+  historyDetail = rental;
+  const fee = feeStatusForRental(rental);
+  const done = !!(rental.returned_at || rental.status === "returned");
+  const rentedAt = Number(rental.rented_at) || 0;
+  const returnedAt = Number(rental.returned_at) || 0;
+  $("historyDetailSub").textContent = done ? "반납까지 마친 이용 기록이에요." : "아직 반납 전인 대여예요.";
+  $("hdStatus").textContent = done ? "반납 완료" : "대여 중";
+  $("hdRentPlace").textContent = STATION_NAMES[rental.station] || STATION_QR[rental.station] || rental.station || "-";
+  $("hdRentSlot").textContent = rental.slot ? `${rental.slot}번 칸` : "-";
+  $("hdRentedAt").textContent = fmtWhen(rentedAt);
+  $("hdDueAt").textContent = fmtWhen(rental.due_at);
+  $("hdReturnedAt").textContent = done ? fmtWhen(returnedAt) : "-";
+  $("hdReturnPlace").textContent = done
+    ? placeLine(rental.return_station || rental.station, rental.return_slot || rental.slot)
+    : "-";
+  $("hdDuration").textContent = done && rentedAt
+    ? fmt(Math.max(0, returnedAt - rentedAt))
+    : (rentedAt ? fmt(Math.max(0, Date.now() - rentedAt)) : "-");
+  $("hdFee").textContent = fee.amount > 0
+    ? `${fee.label} · ${fee.amount.toLocaleString("ko-KR")}원`
+    : fee.label;
+  show("v-history-detail");
+}
+
+const REPORT_PHOTO_MAX = 3;
+let reportPhotos = [];
+
+function renderReportPhotos() {
+  const box = $("reportPhotos");
+  const add = $("reportPhotoAdd");
+  if (!box) return;
+  box.replaceChildren();
+  reportPhotos.forEach((src, index) => {
+    const fig = document.createElement("div");
+    fig.className = "report-photo";
+    const img = document.createElement("img");
+    img.alt = "";
+    img.src = src;
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "report-photo-remove";
+    rm.setAttribute("aria-label", "사진 빼기");
+    rm.textContent = "×";
+    rm.onclick = () => {
+      reportPhotos.splice(index, 1);
+      renderReportPhotos();
+    };
+    fig.append(img, rm);
+    box.append(fig);
+  });
+  if (add) add.hidden = reportPhotos.length >= REPORT_PHOTO_MAX;
+}
+
+function compressReportPhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !String(file.type || "").startsWith("image/")) {
+      reject(new Error("사진 파일만 첨부할 수 있어요."));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const edge = 1280;
+      const scale = Math.min(1, edge / Math.max(img.width || 1, img.height || 1));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round((img.width || 1) * scale));
+      canvas.height = Math.max(1, Math.round((img.height || 1) * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error("사진을 읽지 못했어요."));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      let quality = 0.72;
+      let dataUrl = canvas.toDataURL("image/jpeg", quality);
+      while (dataUrl.length > 220000 && quality > 0.42) {
+        quality = Math.round((quality - 0.08) * 100) / 100;
+        dataUrl = canvas.toDataURL("image/jpeg", quality);
+      }
+      if (!dataUrl.startsWith("data:image/jpeg") || dataUrl.length > 240000) {
+        reject(new Error("사진이 너무 커요. 더 작은 사진을 골라 주세요."));
+        return;
+      }
+      resolve(dataUrl);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("사진을 읽지 못했어요."));
+    };
+    img.src = url;
+  });
+}
+
+function openReport() {
+  $("reportErr").textContent = "";
+  $("reportCategory").value = "";
+  $("reportStation").value = "";
+  $("reportMessage").value = "";
+  reportPhotos = [];
+  renderReportPhotos();
+  const input = $("reportPhotoInput");
+  if (input) input.value = "";
+  $("reportSubmit").disabled = false;
+  $("reportSubmit").textContent = "신고 접수";
+  show("v-report");
+}
+
+async function submitReport() {
+  const err = $("reportErr");
+  const btn = $("reportSubmit");
+  err.textContent = "";
+  const category = $("reportCategory").value;
+  const station = $("reportStation").value.trim();
+  const message = $("reportMessage").value.trim();
+  if (!category) {
+    err.textContent = "신고 유형을 선택해 주세요.";
+    return;
+  }
+  if (message.length < 4) {
+    err.textContent = "내용을 조금 더 적어 주세요.";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "접수 중…";
+  try {
+    await submitFaultReport({ category, station, message, photos: reportPhotos.slice() });
+    btn.textContent = "접수됐어요";
+    await wait(700);
+    goTab("home");
+  } catch (e) {
+    err.textContent = friendlyError(e);
+    btn.disabled = false;
+    btn.textContent = "신고 접수";
   }
 }
 
@@ -665,8 +913,10 @@ async function signupSubmit() {
     ["joinSid", "joinName", "joinPw", "joinPw2"].forEach((id) => { $(id).value = ""; });
     setTimeout(() => {
       location.hash = "login";
-      show("v-login");
-      $("pw").focus();
+      Promise.resolve(show("v-login")).then(() => {
+        playLoginReveal();
+        $("pw").focus();
+      });
     }, 700);
   } catch (e) {
     out.className = "err";
@@ -676,6 +926,23 @@ async function signupSubmit() {
   }
 }
 
+function playLoginReveal() {
+  const root = $("v-login");
+  if (!root || !root.classList.contains("on")) return;
+  if (prefersReducedMotion()) {
+    root.classList.remove("login-reveal-ready", "login-reveal-run");
+    return;
+  }
+  root.classList.add("login-reveal-ready");
+  root.classList.remove("login-reveal-run");
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!root.classList.contains("on")) return;
+      root.classList.add("login-reveal-run");
+    });
+  });
+}
+
 function showAuth(which) {
   if (state.user) return;
   if (which === "signup") {
@@ -683,7 +950,7 @@ function showAuth(which) {
     show("v-signup");
   } else {
     location.hash = "login";
-    show("v-login");
+    Promise.resolve(show("v-login")).then(() => playLoginReveal());
   }
 }
 
@@ -696,7 +963,7 @@ async function logout() {
   syncPickActions();
   setTabbar(false);
   history.replaceState(null, "", location.pathname + location.search);
-  show("v-login");
+  Promise.resolve(show("v-login")).then(() => playLoginReveal());
 }
 
 /** 대여: 보관중(in)만 / 반납: 비어있는 칸(out)만 */
@@ -1299,7 +1566,7 @@ function openPayForm() {
   fillPayFields("pay", null);
   $("payErr").textContent = "";
   const hasList = (state.user.paymentMethods || []).length > 0;
-  $("payBack").textContent = hasList ? "← 결제수단" : "← 설정";
+  $("payBack").textContent = hasList ? "← 결제수단" : "← 마이";
   paintPayCard("payCard", readPayFields("pay"));
   renderPayState();
   show("v-pay");
@@ -2209,6 +2476,46 @@ $("tabSettings").onclick = () => goTab("settings");
 $("homeRentBtn").onclick = () => goTab("qr");
 $("homeDuePay").onclick = () => payOutstanding();
 $("homeMapBtn").onclick = () => openCampusMap();
+$("homeGuideBtn").onclick = () => show("v-guide");
+$("homeHistoryBtn").onclick = () => openHistory();
+$("homeReportBtn").onclick = () => openReport();
+$("guideBack").onclick = () => goTab("home");
+$("historyBack").onclick = () => goTab("home");
+$("historyDetailBack").onclick = () => show("v-history");
+$("reportBack").onclick = () => goTab("home");
+$("reportForm").onsubmit = (e) => {
+  e.preventDefault();
+  submitReport();
+};
+$("reportPhotoAdd").onclick = () => {
+  if (reportPhotos.length >= REPORT_PHOTO_MAX) return;
+  $("reportPhotoInput").click();
+};
+$("reportPhotoInput").onchange = async () => {
+  const input = $("reportPhotoInput");
+  const err = $("reportErr");
+  const files = [...(input.files || [])];
+  input.value = "";
+  if (!files.length) return;
+  err.textContent = "";
+  for (const file of files) {
+    if (reportPhotos.length >= REPORT_PHOTO_MAX) {
+      err.textContent = "사진은 3장까지 첨부할 수 있어요.";
+      break;
+    }
+    try {
+      reportPhotos.push(await compressReportPhoto(file));
+    } catch (e) {
+      err.textContent = e && e.message ? e.message : "사진을 첨부하지 못했어요.";
+      break;
+    }
+  }
+  renderReportPhotos();
+};
+$("reportStation").oninput = () => {
+  const el = $("reportStation");
+  el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+};
 $("returnDoneRent").onclick = () => goTab("qr");
 $("returnDoneHome").onclick = () => goTab("home");
 $("mapBack").onclick = () => goTab("home");
@@ -2294,6 +2601,8 @@ setInterval(tick, 1000);
   if (bootAuth === "v-signup") {
     $("v-login").classList.remove("on");
     $("v-signup").classList.add("on");
+  } else if (!prefersReducedMotion()) {
+    $("v-login").classList.add("login-reveal-ready");
   }
   applyShowChrome(bootAuth);
 }
@@ -2306,6 +2615,7 @@ setInterval(tick, 1000);
       applyUser(u);
       syncUserChrome();
       tick();
+      $("v-login").classList.remove("login-reveal-ready", "login-reveal-run");
       show("v-home", { tab: "home", instant: true });
       return;
     }
@@ -2313,5 +2623,8 @@ setInterval(tick, 1000);
     console.warn("[umbrella] session restore failed", e);
   }
   if (authHash() === "signup") show("v-signup", { instant: true });
-  else show("v-login", { instant: true });
+  else {
+    show("v-login", { instant: true });
+    playLoginReveal();
+  }
 })();

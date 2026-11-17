@@ -367,6 +367,21 @@ function createLocalBackend() {
       const r = await api("GET", `/api/admin/students/${encodeURIComponent(studentId)}/rentals`);
       return r.rentals || [];
     },
+    async getMyRentals() {
+      const headers = await this.getAuthHeaders();
+      const r = await api("GET", "/api/me/rentals", null, headers);
+      return r.rentals || [];
+    },
+    async submitFaultReport(report) {
+      const headers = await this.getAuthHeaders();
+      const photos = normalizeReportPhotos(report && report.photos);
+      return api("POST", "/api/fault-report", {
+        category: report && report.category,
+        station: report && report.station,
+        message: report && report.message,
+        photos,
+      }, headers);
+    },
     async setUmbrellaStatus(p) { return api("POST", "/api/admin/umbrella-status", p); },
     async seedInventory() {},
     async fetchNextCommand(station = "A1") {
@@ -427,6 +442,24 @@ function createFirebaseBackend() {
   };
   const docData = (d) => ({ id: d.id, ...d.data() });
   const deviceEmail = (cfg.deviceEmail || "device@umbrella.local").toLowerCase();
+
+  async function collectRentals({ uid, studentId }) {
+    const snaps = [];
+    if (uid) snaps.push(getDocs(query(collection(db, "rentals"), where("studentUid", "==", uid))));
+    if (studentId) snaps.push(getDocs(query(collection(db, "rentals"), where("studentId", "==", String(studentId)))));
+    const found = await Promise.all(snaps);
+    const rows = [];
+    const seen = new Set();
+    for (const snap of found) {
+      for (const d of snap.docs) {
+        if (seen.has(d.id)) continue;
+        seen.add(d.id);
+        rows.push(docData(d));
+      }
+    }
+    rows.sort((a, b) => (Number(b.rented_at) || 0) - (Number(a.rented_at) || 0));
+    return rows;
+  }
 
   async function userFromAuth(user) {
     if (!user) return null;
@@ -742,25 +775,52 @@ function createFirebaseBackend() {
       if ((auth.currentUser.email || "").toLowerCase() !== deviceEmail) {
         throw new Error("device 계정만 대여 기록을 볼 수 있어요.");
       }
-      const snaps = [];
-      if (uid) {
-        snaps.push(getDocs(query(collection(db, "rentals"), where("studentUid", "==", uid))));
+      return collectRentals({ uid, studentId });
+    },
+
+    async getMyRentals() {
+      const user = requireUser();
+      // studentUid 조건만 써야 list 규칙(본인 uid)을 통과한다. studentId 조회는 permission-denied.
+      const snap = await getDocs(query(
+        collection(db, "rentals"),
+        where("studentUid", "==", user.uid),
+        limit(80)
+      ));
+      return snap.docs
+        .map(docData)
+        .sort((a, b) => (Number(b.rented_at) || 0) - (Number(a.rented_at) || 0));
+    },
+
+    async submitFaultReport(report) {
+      const user = requireUser();
+      const category = String((report && report.category) || "").trim();
+      const message = String((report && report.message) || "").trim();
+      const station = String((report && report.station) || "").trim().toUpperCase().slice(0, 8);
+      if (!["umbrella", "door", "sensor", "app", "other"].includes(category)) {
+        throw new Error("신고 유형을 선택해 주세요.");
       }
-      if (studentId) {
-        snaps.push(getDocs(query(collection(db, "rentals"), where("studentId", "==", String(studentId)))));
+      if (message.length < 4 || message.length > 500) {
+        throw new Error("내용을 4~500자로 적어 주세요.");
       }
-      const found = await Promise.all(snaps);
-      const rows = [];
-      const seen = new Set();
-      for (const snap of found) {
-        for (const d of snap.docs) {
-          if (seen.has(d.id)) continue;
-          seen.add(d.id);
-          rows.push(docData(d));
-        }
-      }
-      rows.sort((a, b) => (Number(b.rented_at) || 0) - (Number(a.rented_at) || 0));
-      return rows;
+      const photos = normalizeReportPhotos(report && report.photos);
+      const item = {
+        id: `fr-${Date.now().toString(36)}`,
+        category,
+        message,
+        station: station || null,
+        createdAt: Date.now(),
+        photoCount: photos.length,
+      };
+      const ref = doc(db, "students", user.uid);
+      const reportRef = doc(db, "students", user.uid, "faultReports", item.id);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        const prev = snap.exists() && Array.isArray(snap.data().faultReports) ? snap.data().faultReports : [];
+        const next = [item, ...prev].slice(0, 40);
+        tx.set(ref, { faultReports: next, updated_at: Date.now() }, { merge: true });
+        tx.set(reportRef, { ...item, photos });
+      });
+      return { ok: true, report: item };
     },
 
     async setUmbrellaStatus({ station, slot, status }) {
@@ -949,6 +1009,8 @@ export const savePaymentWallet = (wallet) => backend.savePaymentWallet(wallet);
 export const listAllUmbrellas = () => backend.listAllUmbrellas();
 export const listActiveRentals = () => backend.listActiveRentals();
 export const listStudentRentals = (p) => backend.listStudentRentals(p);
+export const getMyRentals = () => backend.getMyRentals();
+export const submitFaultReport = (p) => backend.submitFaultReport(p);
 export const setUmbrellaStatus = (p) => backend.setUmbrellaStatus(p);
 export const seedInventory = () => backend.seedInventory();
 export const fetchNextCommand = (s) => backend.fetchNextCommand(s);
@@ -963,6 +1025,18 @@ export const health = () => backend.health();
 export const getAuthHeaders = () => (
   backend.getAuthHeaders ? backend.getAuthHeaders() : Promise.resolve({})
 );
+
+function normalizeReportPhotos(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  if (list.length > 3) throw new Error("사진은 3장까지 첨부할 수 있어요.");
+  return list.map((item) => {
+    const dataUrl = String(item || "");
+    if (!dataUrl.startsWith("data:image/jpeg;base64,") || dataUrl.length > 240000) {
+      throw new Error("사진 형식이 맞지 않아요. 다시 골라 주세요.");
+    }
+    return dataUrl;
+  });
+}
 
 /** Firebase/서버 에러를 사용자용 문구로 변환 */
 export function friendlyError(e) {

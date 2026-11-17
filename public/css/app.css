@@ -147,7 +147,10 @@ html.shell-lock main {
   height: calc(var(--app-h) - var(--safe-top));
   max-height: calc(var(--app-h) - var(--safe-top));
   min-height: 0;
-  overflow: hidden;
+  /* 스크롤바는 main 오른쪽 경계(화면 끝). 뷰가 패딩 안에서 스크롤하면 바가 안쪽으로 뜬다. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 로그인: 키보드가 레이아웃을 줄이지 않음 — 화면 뭉개짐 방지, 가리기만 허용 */
@@ -251,6 +254,49 @@ main.vt-busy > .view.vt-to {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
+}
+main.vt-busy > .view.vt-to {
+  overflow-x: hidden;
+  overflow-y: auto;
+  pointer-events: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+/* 화면별 #id.view.on 규칙이 전환 중 너비·여백을 덮어 양옆이 벌어지지 않게 */
+main.vt-busy > #v-home.view.vt-from,
+main.vt-busy > #v-settings.view.vt-from,
+main.vt-busy > #v-guide.view.vt-from,
+main.vt-busy > #v-history.view.vt-from,
+main.vt-busy > #v-history-detail.view.vt-from,
+main.vt-busy > #v-report.view.vt-from,
+main.vt-busy > #v-pay.view.vt-from,
+main.vt-busy > #v-pay-list.view.vt-from {
+  width: auto;
+  margin: 0;
+  overflow: hidden;
+  flex: none;
+  min-height: 0;
+}
+/* 들어오는 화면은 stagger가 끝나기 전에도 세로 스크롤 */
+main.vt-busy > #v-home.view.vt-to,
+main.vt-busy > #v-settings.view.vt-to,
+main.vt-busy > #v-guide.view.vt-to,
+main.vt-busy > #v-history.view.vt-to,
+main.vt-busy > #v-history-detail.view.vt-to,
+main.vt-busy > #v-report.view.vt-to,
+main.vt-busy > #v-pay.view.vt-to,
+main.vt-busy > #v-pay-list.view.vt-to {
+  width: auto;
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex: none;
+  min-height: 0;
+  pointer-events: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 body.no-tab main.vt-busy > .view.vt-from,
 body.no-tab main.vt-busy > .view.vt-to {
@@ -512,14 +558,107 @@ main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagge
 main.vt-busy > .view.vt-to[data-vt="enter-rise"][data-vt-run="1"] .vt-stagger {
   animation: vtStaggerUp var(--nav-stagger-dur) var(--nav-ease-stagger) both;
 }
-/* 앞쪽은 촘촘, 박스(이용방법/지도/대여)는 간격 넓게 */
+/* 로그인 리빌과 같은 간격. 마지막 시작은 약 470~700ms */
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 40ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 95ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 200ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 310ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 420ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 530ms; }
-main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 640ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 90ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 160ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 210ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 300ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 380ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 470ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="7"] { animation-delay: 550ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="8"] { animation-delay: 620ms; }
+main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="9"] { animation-delay: 700ms; }
+/* 홈만 기존 간격과 로그인 간격의 중간 */
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 40ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 93ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 180ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 260ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 360ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 455ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 555ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="7"] { animation-delay: 645ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="8"] { animation-delay: 725ms; }
+main.vt-busy > #v-home.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="9"] { animation-delay: 810ms; }
+
+/* 제목 텍스트 리빌 — 아래에서 한 줄씩 올라온다 */
+.tx-reveal-line,
+.login-reveal-line {
+  display: block;
+  overflow: hidden;
+}
+.tx-reveal-line > span,
+.login-reveal-line > span {
+  display: block;
+}
+main.vt-busy > #v-guide.vt-to .tx-reveal-line > span,
+main.vt-busy > #v-history.vt-to .tx-reveal-line > span {
+  transform: translate3d(0, 115%, 0);
+  opacity: 0;
+}
+main.vt-busy > #v-guide.vt-to[data-vt-run="1"] .tx-reveal-line > span,
+main.vt-busy > #v-history.vt-to[data-vt-run="1"] .tx-reveal-line > span {
+  animation: txRevealUp 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 90ms;
+}
+@keyframes txRevealUp {
+  from { transform: translate3d(0, 115%, 0); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* 로그인 첫 진입 — 좌→우 텍스트 리빌 + 입력/버튼 연출 */
+#v-login .login-reveal {
+  opacity: 1;
+}
+#v-login.login-reveal-ready .login-reveal[data-reveal="0"],
+#v-login.login-reveal-ready .login-reveal[data-reveal="2"],
+#v-login.login-reveal-ready .login-reveal[data-reveal="3"],
+#v-login.login-reveal-ready .login-reveal[data-reveal="4"],
+#v-login.login-reveal-ready .login-reveal[data-reveal="5"] {
+  opacity: 0;
+  transform: translate3d(-18px, 0, 0);
+}
+#v-login.login-reveal-ready .login-reveal-line > span {
+  opacity: 0;
+  transform: none;
+  clip-path: inset(0 100% 0 0);
+}
+#v-login.login-reveal-run .login-reveal[data-reveal="0"],
+#v-login.login-reveal-run .login-reveal[data-reveal="2"],
+#v-login.login-reveal-run .login-reveal[data-reveal="3"],
+#v-login.login-reveal-run .login-reveal[data-reveal="4"],
+#v-login.login-reveal-run .login-reveal[data-reveal="5"] {
+  animation: loginRevealIn 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+#v-login.login-reveal-run .login-reveal[data-reveal="0"] { animation-delay: 40ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="2"] { animation-delay: 210ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="3"] { animation-delay: 300ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="4"] { animation-delay: 380ms; }
+#v-login.login-reveal-run .login-reveal[data-reveal="5"] { animation-delay: 470ms; }
+#v-login.login-reveal-run .login-reveal-line > span {
+  animation: loginTextWipe 780ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+#v-login.login-reveal-run .login-reveal-line:nth-child(1) > span { animation-delay: 90ms; }
+#v-login.login-reveal-run .login-reveal-line:nth-child(2) > span { animation-delay: 160ms; }
+@keyframes loginRevealIn {
+  from { opacity: 0; transform: translate3d(-18px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes loginTextWipe {
+  from { opacity: 0.2; clip-path: inset(0 100% 0 0); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #v-login.login-reveal-ready .login-reveal,
+  #v-login.login-reveal-ready .login-reveal-line > span,
+  #v-login.login-reveal-run .login-reveal,
+  #v-login.login-reveal-run .login-reveal-line > span {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+}
 
 /* 결제수단: 짧게 떠오르며 늦게 자리 잡는다. 앞에서 끝나지 않게 둔다. */
 main.vt-busy > #v-pay.vt-to .vt-stagger,
@@ -529,26 +668,8 @@ main.vt-busy > #v-pay-list.vt-to .vt-stagger {
 }
 main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger,
 main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger {
-  animation: vtPayIn 780ms cubic-bezier(0.33, 0.02, 0.2, 1) both;
+  animation: vtPayIn 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="0"] { animation-delay: 70ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="1"] { animation-delay: 160ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="2"] { animation-delay: 250ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="3"] { animation-delay: 340ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="4"] { animation-delay: 420ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="5"] { animation-delay: 500ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="6"] { animation-delay: 570ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="7"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="7"] { animation-delay: 640ms; }
-main.vt-busy > #v-pay.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="8"],
-main.vt-busy > #v-pay-list.vt-to[data-vt-run="1"] .vt-stagger[data-stagger="8"] { animation-delay: 700ms; }
 @keyframes vtPayIn {
   0% { opacity: 0; transform: translate3d(0, 10px, 0); }
   68% { opacity: 1; }
@@ -571,10 +692,10 @@ main.vt-busy > .view.vt-to[data-vt="enter-tab-left"][data-vt-run="1"] .vt-stagge
   animation: vtStaggerLeft var(--nav-stagger-dur) var(--nav-ease-stagger) both;
 }
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="0"] {
-  animation-delay: 130ms;
+  animation-delay: 80ms;
 }
 main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="1"] {
-  animation-delay: 210ms;
+  animation-delay: 150ms;
 }
 @keyframes vtStaggerRight {
   from { opacity: 0; transform: translate3d(20px, 0, 0); }
@@ -1326,6 +1447,259 @@ main.vt-busy > .view.vt-to[data-vt-run="1"] .vt-stagger-text[data-stagger="1"] {
   letter-spacing: -0.03em;
   text-align: center;
   line-height: 1.25;
+}
+/* 뷰가 따로 스크롤하면 전환 중 absolute+음수 여백 때문에 가로가 화면 끝까지 벌어졌다가 돌아온다.
+   스크롤은 main/문서가 담당하고 뷰 너비는 항상 컬럼 안이다. */
+#v-home.view.on,
+#v-settings.view.on,
+#v-guide.view.on,
+#v-history.view.on,
+#v-history-detail.view.on,
+#v-report.view.on,
+#v-pay.view.on,
+#v-pay-list.view.on {
+  overflow: visible;
+  flex: 1 0 auto;
+  min-height: min-content;
+  width: 100%;
+  margin: 0;
+}
+.home-menu {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--ui-scale));
+  margin-top: calc(14px * var(--ui-scale));
+  padding-bottom: calc(8px * var(--ui-scale));
+  flex-shrink: 0;
+}
+.home-menu-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: calc(12px * var(--ui-scale));
+  border: 1px solid var(--line);
+  border-radius: calc(16px * var(--ui-scale));
+  background: #fff;
+  box-shadow: var(--shadow);
+  padding: calc(16px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.home-menu-bar:active { background: #F7F8FA; }
+.home-menu-ico {
+  width: calc(36px * var(--ui-scale));
+  height: calc(36px * var(--ui-scale));
+  border-radius: calc(12px * var(--ui-scale));
+  background: var(--fill);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.home-menu-ico svg {
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+}
+.home-menu-label {
+  flex: 1;
+  font-size: var(--fs-body);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.home-menu-chevron {
+  color: var(--muted);
+  font-size: calc(20px * var(--ui-scale));
+  font-weight: 500;
+  line-height: 1;
+}
+.guide-card,
+.report-card,
+.history-detail-card {
+  margin-top: var(--gap-md);
+}
+.guide-kicker {
+  margin: 0 0 6px;
+  color: var(--ssu-deep);
+  font-size: var(--fs-tiny);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.guide-title {
+  margin: 0 0 8px;
+  font-size: var(--fs-body);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.guide-copy,
+.guide-steps,
+.guide-list {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  line-height: 1.55;
+}
+.guide-steps,
+.guide-list {
+  padding-left: 1.15em;
+  display: grid;
+  gap: 6px;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--ui-scale));
+  padding-bottom: calc(12px * var(--ui-scale));
+}
+.history-empty {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+.history-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: calc(12px * var(--ui-scale));
+  border: 1px solid var(--line);
+  border-radius: calc(16px * var(--ui-scale));
+  background: #fff;
+  box-shadow: var(--shadow);
+  padding: calc(14px * var(--ui-scale));
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.history-item:active { background: #F7F8FA; }
+.history-item-ico {
+  width: calc(42px * var(--ui-scale));
+  height: calc(42px * var(--ui-scale));
+  border-radius: calc(14px * var(--ui-scale));
+  background: var(--ssu-soft);
+  color: var(--ssu-deep);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.history-item-body { flex: 1; min-width: 0; }
+.history-item-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.history-item-sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  font-weight: 600;
+}
+.history-item-fee {
+  margin: 6px 0 0;
+  font-size: var(--fs-tiny);
+  font-weight: 800;
+}
+.history-item-fee.is-none { color: var(--muted); }
+.history-item-fee.is-paid { color: var(--ssu-deep); }
+.history-item-fee.is-owed { color: var(--err); }
+.history-item-chevron {
+  color: var(--muted);
+  font-size: 18px;
+}
+.history-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-meta);
+}
+.history-detail-row:last-child { border-bottom: 0; }
+.history-detail-row span { color: var(--muted); font-weight: 700; }
+.history-detail-row strong {
+  text-align: right;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.report-card select,
+.report-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 13px 14px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+.report-card textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.45;
+}
+.report-photos-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.report-photos-label {
+  color: #3d4c5c;
+  font-size: 12px;
+  font-weight: 800;
+}
+.report-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.report-photos:empty { display: none; }
+.report-photo {
+  position: relative;
+  width: 76px;
+  height: 76px;
+}
+.report-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--fill);
+}
+.report-photo-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: #191f28;
+  color: #fff;
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0;
+}
+.report-photo-add {
+  align-self: flex-start;
+  border: 1px dashed var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
 }
 .home-rent-sub {
   font-size: var(--fs-tiny);
@@ -2410,7 +2784,6 @@ main.vt-busy > #v-qr.vt-from {
 }
 .pg-row .pg-field { flex: 1; min-width: 0; justify-content: flex-end; }
 .pg-opt { font-weight: 700; }
-#v-pay.view.on, #v-pay-list.view.on { overflow-y: auto; }
 .pay-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .pay-swipe {
   position: relative;

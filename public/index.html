@@ -29,30 +29,33 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/css/app.css?v=115">
+<link rel="stylesheet" href="/css/app.css?v=121">
 </head>
 <body class="auth-login no-tab">
 <main>
 
 <section class="view on" id="v-login">
-  <div class="brand">
+  <div class="brand login-reveal" data-reveal="0">
     <img class="brand-logo" src="/img/ssu-mark.png?v=41" alt="숭실대학교" width="76" height="32">
     <div class="brand-text">숭실 우산 대여</div>
   </div>
-  <h1 class="hero-title">학번으로<br>바로 시작해요</h1>
-  <p class="hero-sub">로그인하면 가까운 보관함에서 우산을 빌릴 수 있어요.</p>
+  <h1 class="hero-title login-reveal" data-reveal="1">
+    <span class="login-reveal-line"><span>학번으로</span></span>
+    <span class="login-reveal-line"><span>바로 시작해요</span></span>
+  </h1>
+  <p class="hero-sub login-reveal" data-reveal="2">로그인하면 가까운 보관함에서 우산을 빌릴 수 있어요.</p>
 
-  <div class="field">
+  <div class="field login-reveal" data-reveal="3">
     <label for="sid">학번</label>
     <input id="sid" inputmode="numeric" autocomplete="username" placeholder="예: 20240001">
   </div>
-  <div class="field">
+  <div class="field login-reveal" data-reveal="4">
     <label for="pw">비밀번호</label>
     <input id="pw" type="password" autocomplete="current-password" placeholder="6~16자리" maxlength="16">
   </div>
   <p class="err" id="loginErr" role="alert"></p>
 
-  <div class="stack-gap">
+  <div class="stack-gap login-reveal" data-reveal="5">
     <button class="btn" id="loginBtn" type="button">로그인</button>
     <p class="footer-link">처음인가요? <a href="#signup" id="goSignup">회원가입</a></p>
   </div>
@@ -145,6 +148,132 @@
       <span class="home-rent-sub">QR 스캔으로 시작</span>
     </button>
   </div>
+  <div class="home-menu">
+    <button type="button" class="home-menu-bar vt-stagger" data-stagger="7" id="homeGuideBtn">
+      <span class="home-menu-ico" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 10.5v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/></svg>
+      </span>
+      <span class="home-menu-label">서비스 안내</span>
+      <span class="home-menu-chevron" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="home-menu-bar vt-stagger" data-stagger="8" id="homeHistoryBtn">
+      <span class="home-menu-ico" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3c-3.2 0-5.8 2.2-6.6 5.1C3.7 8.4 2.5 9.9 2.5 11.7c0 .4.3.8.8.8h17.4c.4 0 .8-.4.8-.8 0-1.8-1.2-3.3-2.9-3.6C17.8 5.2 15.2 3 12 3z" fill="currentColor"/><path d="M12 12.5v7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 21.2c1.1 0 1.7-.7 1.7-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </span>
+      <span class="home-menu-label">이용 내역</span>
+      <span class="home-menu-chevron" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="home-menu-bar vt-stagger" data-stagger="9" id="homeReportBtn">
+      <span class="home-menu-ico" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3.5 3.8 19.2h16.4L12 3.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9.2v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.05" fill="currentColor"/></svg>
+      </span>
+      <span class="home-menu-label">고장 신고</span>
+      <span class="home-menu-chevron" aria-hidden="true">›</span>
+    </button>
+  </div>
+</section>
+
+<section class="view" id="v-guide">
+  <div class="top-nav vt-stagger" data-stagger="0">
+    <button type="button" class="nav-back" id="guideBack">← 홈</button>
+  </div>
+  <h1 class="hero-title vt-stagger tx-reveal" data-stagger="1">
+    <span class="tx-reveal-line"><span>서비스 안내</span></span>
+  </h1>
+  <p class="hero-sub vt-stagger" data-stagger="2">숭실대 캠퍼스에서 우산을 빌려 쓰는 무인 대여 서비스예요.</p>
+  <div class="sheet guide-card vt-stagger" data-stagger="3">
+    <p class="guide-kicker">UMBRELLA</p>
+    <h2 class="guide-title">무엇을 하나요?</h2>
+    <p class="guide-copy">가까운 보관함의 QR을 스캔하거나 코드를 입력해 우산을 빌리고, 사용한 뒤에는 비어 있는 칸 어디에나 반납할 수 있어요.</p>
+  </div>
+  <div class="sheet guide-card vt-stagger" data-stagger="4">
+    <h2 class="guide-title">이용 순서</h2>
+    <ol class="guide-steps">
+      <li>대여소 QR 또는 5자리 코드로 보관함을 열어요</li>
+      <li>비어 있지 않은 칸을 골라 우산을 꺼내요</li>
+      <li>정해진 시간 안에 반납하면 추가요금이 없어요</li>
+      <li>시간이 지나면 추가요금이 생기고, 미납이면 다음 대여가 막혀요</li>
+    </ol>
+  </div>
+  <div class="sheet guide-card vt-stagger" data-stagger="5">
+    <h2 class="guide-title">요금 · 주의</h2>
+    <ul class="guide-list">
+      <li>기본 대여 시간 안에 반납하면 추가 요금이 없어요</li>
+      <li>기한이 지나면 5분마다 1,000원이 붙어요</li>
+      <li>보관함과 우산을 소중히 다뤄 주세요</li>
+      <li>고장이나 이상이 있으면 홈의 고장 신고로 알려 주세요</li>
+    </ul>
+  </div>
+</section>
+
+<section class="view" id="v-history">
+  <div class="top-nav vt-stagger" data-stagger="0">
+    <button type="button" class="nav-back" id="historyBack">← 홈</button>
+  </div>
+  <h1 class="hero-title vt-stagger tx-reveal" data-stagger="1">
+    <span class="tx-reveal-line"><span>이용 내역</span></span>
+  </h1>
+  <p class="hero-sub vt-stagger" data-stagger="2">최근 대여·반납 기록을 볼 수 있어요.</p>
+  <div class="history-list vt-stagger" data-stagger="3" id="historyList">
+    <p class="history-empty" id="historyEmpty">이용 내역이 없어요.</p>
+  </div>
+</section>
+
+<section class="view" id="v-history-detail">
+  <div class="top-nav vt-stagger" data-stagger="0">
+    <button type="button" class="nav-back" id="historyDetailBack">← 이용 내역</button>
+  </div>
+  <h1 class="hero-title vt-stagger" data-stagger="1">이용 상세</h1>
+  <p class="hero-sub vt-stagger" data-stagger="2" id="historyDetailSub">대여 기록을 확인해요.</p>
+  <div class="sheet history-detail-card vt-stagger" data-stagger="3">
+    <div class="history-detail-row"><span>상태</span><strong id="hdStatus">-</strong></div>
+    <div class="history-detail-row"><span>대여 위치</span><strong id="hdRentPlace">-</strong></div>
+    <div class="history-detail-row"><span>대여 칸</span><strong id="hdRentSlot">-</strong></div>
+    <div class="history-detail-row"><span>대여 시각</span><strong id="hdRentedAt">-</strong></div>
+    <div class="history-detail-row"><span>반납 기한</span><strong id="hdDueAt">-</strong></div>
+    <div class="history-detail-row"><span>반납 시각</span><strong id="hdReturnedAt">-</strong></div>
+    <div class="history-detail-row"><span>반납 위치</span><strong id="hdReturnPlace">-</strong></div>
+    <div class="history-detail-row"><span>이용 시간</span><strong id="hdDuration">-</strong></div>
+    <div class="history-detail-row"><span>추가요금</span><strong id="hdFee">-</strong></div>
+  </div>
+</section>
+
+<section class="view" id="v-report">
+  <div class="top-nav vt-stagger" data-stagger="0">
+    <button type="button" class="nav-back" id="reportBack">← 홈</button>
+  </div>
+  <h1 class="hero-title vt-stagger" data-stagger="1">고장 신고</h1>
+  <p class="hero-sub vt-stagger" data-stagger="2">보관함·우산·앱 문제를 알려 주세요. 접수되면 확인 후 조치할게요.</p>
+  <form class="sheet report-card vt-stagger" data-stagger="3" id="reportForm">
+    <label class="pg-field">
+      <span>신고 유형</span>
+      <select id="reportCategory" required>
+        <option value="">유형을 선택해 주세요</option>
+        <option value="umbrella">우산 고장·파손</option>
+        <option value="door">보관함 문·잠금</option>
+        <option value="sensor">인식·센서 오류</option>
+        <option value="app">앱·결제 문제</option>
+        <option value="other">기타</option>
+      </select>
+    </label>
+    <label class="pg-field">
+      <span>대여소 코드 <span class="pg-opt">(선택)</span></span>
+      <input id="reportStation" type="text" maxlength="5" autocomplete="off" placeholder="예: A7482">
+    </label>
+    <label class="pg-field">
+      <span>내용</span>
+      <textarea id="reportMessage" rows="5" maxlength="500" placeholder="언제, 어떤 칸에서, 무엇이 이상했는지 적어 주세요." required></textarea>
+    </label>
+    <div class="report-photos-field">
+      <span class="report-photos-label">사진 <span class="pg-opt">(선택, 최대 3장)</span></span>
+      <div class="report-photos" id="reportPhotos"></div>
+      <input id="reportPhotoInput" type="file" accept="image/*" multiple hidden>
+      <button type="button" class="report-photo-add" id="reportPhotoAdd">사진 추가</button>
+    </div>
+    <p class="err" id="reportErr"></p>
+    <button class="btn" id="reportSubmit" type="submit">신고 접수</button>
+    <p class="pg-fine">긴급한 안전 문제는 캠퍼스 관리 부서에도 알려 주세요.</p>
+  </form>
 </section>
 
 <section class="view view-immersive" id="v-map">
@@ -320,7 +449,7 @@
 
 <section class="view" id="v-pay-list">
   <div class="top-nav vt-stagger" data-stagger="0">
-    <button type="button" class="nav-back" id="payListBack">← 설정</button>
+    <button type="button" class="nav-back" id="payListBack">← 마이</button>
   </div>
   <div class="vt-stagger" data-stagger="1">
     <p class="pg-kicker">UMBRELLA PAY</p>
@@ -334,7 +463,7 @@
 
 <section class="view" id="v-pay">
   <div class="top-nav vt-stagger" data-stagger="0">
-    <button type="button" class="nav-back" id="payBack">← 설정</button>
+    <button type="button" class="nav-back" id="payBack">← 마이</button>
   </div>
   <div class="vt-stagger" data-stagger="1">
     <p class="pg-kicker">UMBRELLA PAY</p>
@@ -499,9 +628,9 @@
   </button>
   <button type="button" class="tab" data-tab="settings" id="tabSettings">
     <span class="tab-ico" aria-hidden="true">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" stroke="currentColor" stroke-width="1.9"/><path d="M19.4 13.1c.05-.36.05-.74 0-1.1l1.7-1.3-1.6-2.8-2 .8a6.7 6.7 0 0 0-1.9-1.1l-.3-2.1H9.7l-.3 2.1c-.68.26-1.32.62-1.9 1.1l-2-.8-1.6 2.8 1.7 1.3c-.05.36-.05.74 0 1.1L4 14.4l1.6 2.8 2-.8c.58.48 1.22.84 1.9 1.1l.3 2.1h3.4l.3-2.1c.68-.26 1.32-.62 1.9-1.1l2 .8 1.6-2.8-1.6-1.3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.9"/><path d="M5.2 19.2c1.4-3.1 3.8-4.6 6.8-4.6s5.4 1.5 6.8 4.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
     </span>
-    <span>설정</span>
+    <span>마이</span>
   </button>
 </nav>
 
@@ -583,6 +712,6 @@
 </div>
 
 <script src="/firebase-config.js?v=3"></script>
-<script type="module" src="/js/app.js?v=140"></script>
+<script type="module" src="/js/app.js?v=144"></script>
 </body>
 </html>

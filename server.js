@@ -81,6 +81,7 @@ for (const sql of [
   "ALTER TABLE students ADD COLUMN payment_registered_at INTEGER",
   "ALTER TABLE students ADD COLUMN payment_wallet TEXT",
   "ALTER TABLE students ADD COLUMN unpaid_fee TEXT",
+  "ALTER TABLE students ADD COLUMN fault_reports TEXT",
 ]) {
   try { db.exec(sql); } catch (_) {}
 }
@@ -140,6 +141,7 @@ const q = {
     "SELECT * FROM rentals WHERE student_id = ? AND returned_at IS NULL ORDER BY id DESC LIMIT 1"
   ),
   setUnpaid: db.prepare("UPDATE students SET unpaid_fee = ? WHERE student_id = ?"),
+  setFaultReports: db.prepare("UPDATE students SET fault_reports = ? WHERE student_id = ?"),
   deleteStudentById: db.prepare("DELETE FROM students WHERE student_id = ?"),
   deleteRentalsByStudent: db.prepare("DELETE FROM rentals WHERE student_id = ?"),
   freeUmbrellasByStudent: db.prepare(
@@ -352,7 +354,7 @@ function studentFromReq(req, res) {
 // ---------- 앱 ----------
 const sessions = new Map();
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.post("/api/signup", (req, res) => {
@@ -490,6 +492,63 @@ app.post("/api/unpaid/settle", (req, res) => {
   if (!u) return;
   q.setUnpaid.run(null, u.student_id);
   res.json({ ok: true, unpaidFee: null });
+});
+
+app.get("/api/me/rentals", (req, res) => {
+  const u = studentFromReq(req, res);
+  if (!u) return;
+  const rentals = q.listRentalsByStudent.all(u.student_id).map((r) => ({
+    id: r.id,
+    rentalId: r.id,
+    studentId: r.student_id,
+    station: r.station,
+    slot: r.slot,
+    rented_at: r.rented_at,
+    due_at: r.due_at,
+    returned_at: r.returned_at || null,
+    return_station: null,
+    return_slot: null,
+    status: r.returned_at ? "returned" : "active",
+  }));
+  res.json({ rentals });
+});
+
+app.post("/api/fault-report", (req, res) => {
+  const u = studentFromReq(req, res);
+  if (!u) return;
+  const category = String((req.body && req.body.category) || "").trim();
+  const message = String((req.body && req.body.message) || "").trim();
+  const station = String((req.body && req.body.station) || "").trim().toUpperCase().slice(0, 8);
+  if (!["umbrella", "door", "sensor", "app", "other"].includes(category)) {
+    return bad(res, "신고 유형을 선택해 주세요.");
+  }
+  if (message.length < 4 || message.length > 500) return bad(res, "내용을 4~500자로 적어 주세요.");
+  const rawPhotos = Array.isArray(req.body && req.body.photos) ? req.body.photos : [];
+  if (rawPhotos.length > 3) return bad(res, "사진은 3장까지 첨부할 수 있어요.");
+  const photos = [];
+  for (const item of rawPhotos) {
+    const dataUrl = String(item || "");
+    if (!dataUrl.startsWith("data:image/jpeg;base64,") || dataUrl.length > 240000) {
+      return bad(res, "사진 형식이 맞지 않아요. 다시 골라 주세요.");
+    }
+    photos.push(dataUrl);
+  }
+  let prev = [];
+  try { prev = u.fault_reports ? JSON.parse(u.fault_reports) : []; } catch { prev = []; }
+  if (!Array.isArray(prev)) prev = [];
+  const item = {
+    id: `fr-${Date.now().toString(36)}`,
+    category,
+    message,
+    station: station || null,
+    createdAt: Date.now(),
+    photoCount: photos.length,
+    photos,
+  };
+  const next = [item, ...prev].slice(0, 40);
+  q.setFaultReports.run(JSON.stringify(next), u.student_id);
+  const { photos: _photos, ...pub } = item;
+  res.json({ ok: true, report: pub });
 });
 
 app.get("/api/students/:id/rental", (req, res) => {

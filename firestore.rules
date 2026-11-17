@@ -97,6 +97,34 @@ service cloud.firestore {
     function owedBefore() {
       return 'unpaidFee' in resource.data && resource.data.unpaidFee != null;
     }
+    function validFaultReport(item) {
+      return item.keys().hasOnly(['id', 'category', 'message', 'station', 'createdAt', 'photoCount'])
+        && item.id is string
+        && item.id.size() > 0
+        && item.id.size() <= 40
+        && item.category in ['umbrella', 'door', 'sensor', 'app', 'other']
+        && item.message is string
+        && item.message.size() >= 4
+        && item.message.size() <= 500
+        && item.createdAt is int
+        && (item.station == null || (item.station is string && item.station.size() <= 8))
+        && (!('photoCount' in item) || (item.photoCount is int && item.photoCount >= 0 && item.photoCount <= 3));
+    }
+    function validFaultPhoto(p) {
+      return p is string
+        && p.size() >= 32
+        && p.size() <= 240000
+        && p.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+');
+    }
+    function validFaultReports(list) {
+      return list is list
+        && list.size() <= 40
+        && (list.size() < 1 || validFaultReport(list[0]))
+        && (list.size() < 2 || validFaultReport(list[1]))
+        && (list.size() < 3 || validFaultReport(list[2]))
+        && (list.size() < 4 || validFaultReport(list[3]))
+        && (list.size() < 5 || validFaultReport(list[4]));
+    }
 
     // 사용자 프로필 — 본인 또는 device(관리)만
     match /students/{uid} {
@@ -113,7 +141,7 @@ service cloud.firestore {
         || (isOwner(uid)
           && request.resource.data.studentId == resource.data.studentId
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['activeRental', 'updated_at', 'name', 'paymentMethod', 'paymentMethods', 'defaultPaymentId', 'unpaidFee'])
+              .hasOnly(['activeRental', 'updated_at', 'name', 'paymentMethod', 'paymentMethods', 'defaultPaymentId', 'unpaidFee', 'faultReports'])
           && (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentMethod', 'paymentMethods', 'defaultPaymentId'])
             || (
@@ -126,7 +154,33 @@ service cloud.firestore {
             || request.resource.data.unpaidFee == null
             || validUnpaidCharge(request.resource.data.unpaidFee)
           )
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['faultReports'])
+            || validFaultReports(request.resource.data.faultReports)
+          )
           && !(request.resource.data.activeRental != null && owedBefore()));
+
+      match /faultReports/{reportId} {
+        allow read: if isOwner(uid) || isDevice();
+        allow create: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['id', 'category', 'message', 'station', 'createdAt', 'photoCount', 'photos'])
+          && request.resource.data.id == reportId
+          && request.resource.data.id.size() > 0
+          && request.resource.data.id.size() <= 40
+          && request.resource.data.category in ['umbrella', 'door', 'sensor', 'app', 'other']
+          && request.resource.data.message is string
+          && request.resource.data.message.size() >= 4
+          && request.resource.data.message.size() <= 500
+          && request.resource.data.createdAt is int
+          && (request.resource.data.station == null || (request.resource.data.station is string && request.resource.data.station.size() <= 8))
+          && request.resource.data.photos is list
+          && request.resource.data.photos.size() <= 3
+          && request.resource.data.photoCount == request.resource.data.photos.size()
+          && (request.resource.data.photos.size() < 1 || validFaultPhoto(request.resource.data.photos[0]))
+          && (request.resource.data.photos.size() < 2 || validFaultPhoto(request.resource.data.photos[1]))
+          && (request.resource.data.photos.size() < 3 || validFaultPhoto(request.resource.data.photos[2]));
+        allow update, delete: if false;
+      }
     }
 
     // 우산 슬롯 — 학생은 대여(in→out)·반납(out→in)만, 생성/기타는 device
