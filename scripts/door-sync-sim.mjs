@@ -138,6 +138,32 @@ assert(startShift > 70 && startShift < 130, `RTT가 200ms 늘면 시작을 약 1
 assert(closed && closed.progress > 0.15 && closed.progress < 0.25, `닫힘 에코만큼 이미 진행돼야 한다. p=${closed && closed.progress}`);
 assert(Math.abs(closeSync.snapshot().moveMs - 1350) < 1, "따라가는 닫힘은 열기 지연을 덮어쓰지 않는다");
 
+const leadSync = createDoorSync(memory());
+const leadNote = leadSync.noteRoundTrip({
+  sentAt: 1_000,
+  recvAt: 1_200,
+  serverNow: 5_000,
+  commandAt: 5_000,
+});
+const staleStart = leadSync.observe({
+  id: "start-stale",
+  kind: "servo",
+  created_at: 5_000,
+  cmd: "cmd",
+  payload: { action: "open", phase: "start", move_ms: 1350, since_start_ms: 0, cmd: "cmd", stamp: "server" },
+}, { ...leadNote, recvAt: 8_000, role: "lead", commandId: "cmd" });
+assert(Math.abs(staleStart.startAt - 8_000) < 1, `오래된 시작 신호로 미리 열면 안 된다. start=${staleStart && staleStart.startAt}`);
+
+const liveSync = createDoorSync(memory());
+const liveStart = liveSync.observe({
+  id: "start-live",
+  kind: "servo",
+  created_at: 1_700_000_005_000,
+  cmd: "cmd",
+  payload: { action: "open", phase: "start", move_ms: 1350, since_start_ms: 0, cmd: "cmd", align: "motor" },
+}, { recvAt: 1_700_000_005_300, offset: 0, rtt: 200, role: "lead", commandId: "cmd" });
+assert(Math.abs(liveStart.startAt - 1_700_000_005_000) < 1, `방금 찍힌 시작은 모터 시각이어야 한다. start=${liveStart && liveStart.startAt}`);
+
 console.log("door-sync ok", {
   firstMs: Math.round(errors[0]),
   eighthMs: Math.round(errors[7]),

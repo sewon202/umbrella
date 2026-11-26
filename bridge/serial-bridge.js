@@ -112,6 +112,7 @@ function localBackend(station) {
     done: (id) => call("POST", `/api/device/commands/${id}/done`),
     event: (p) => call("POST", "/api/device/event", p),
     presence: (p) => call("POST", "/api/device/presence", { station, link: "wired", ...p }),
+    sensors: (fields) => call("POST", "/api/device/presence", { station, link: "wired", mcu_ok: true, ...fields }),
   };
 }
 
@@ -120,7 +121,7 @@ async function firebaseBackend(cfg, station) {
   const { getAuth, signInWithEmailAndPassword } = require("firebase/auth");
   const {
     getFirestore, collection, query, where, orderBy, limit,
-    getDocs, updateDoc, setDoc, doc, addDoc,
+    getDocs, updateDoc, setDoc, doc, addDoc, onSnapshot,
   } = require("firebase/firestore");
 
   const app = initializeApp(cfg.firebase);
@@ -146,6 +147,18 @@ async function firebaseBackend(cfg, station) {
         .find((c) => c.slot >= 1 && c.slot <= maxSlot);
       return row ? { ok: true, has: true, ...row } : { ok: true, has: false };
     },
+    watch(onWake) {
+      const qy = query(
+        collection(db, "commands"),
+        where("station", "==", station),
+        where("done", "==", 0),
+        orderBy("created_at", "asc"),
+        limit(5)
+      );
+      return onSnapshot(qy, () => onWake(), (err) => {
+        console.error("[watch]", err.message);
+      });
+    },
     async done(id) {
       await updateDoc(doc(db, "commands", id), { done: 1, done_at: Date.now() });
     },
@@ -165,6 +178,15 @@ async function firebaseBackend(cfg, station) {
         mcu_ok: !!mcu_ok,
         wifi_rssi: null,
         wifi_ip: null,
+      }, { merge: true });
+    },
+    async sensors(fields) {
+      await setDoc(doc(db, "stations", station), {
+        ...fields,
+        code: station,
+        last_seen: Date.now(),
+        link: "wired",
+        mcu_ok: true,
       }, { merge: true });
     },
   };
@@ -226,16 +248,35 @@ async function main() {
     }
   }
 
+  function noteSensors(fields) {
+    if (typeof api.sensors !== "function") return;
+    api.sensors(fields).catch((err) => console.error("[sensor]", err.message));
+  }
+
   const handlers = [
     [/^PONG\b/i, () => { lastPong = Date.now(); }],
     [/^DONE\s+(?:OPEN(?:_RETURN)?|TEST_OPEN|TEST_CLOSE)\s+\d+/i, () => finish("mcu")],
-    [/^EVENT\s+RFID\s+(\d+)\s+(\S+)(?:\s+(\S+))?/i, (m) => sendEvent(Number(m[1]), "rfid", { uid: m[2], ...(m[3] ? { cmd: m[3] } : {}) })],
-    [/^EVENT\s+IR\s+(\d+)\s+(\d+)/i, (m) => sendEvent(Number(m[1]), "ir", { present: m[2] === "1", source: "sense_ir" })],
-    [/^EVENT\s+IR\s+(\d+)/i, (m) => sendEvent(Number(m[1]), "ir", { present: true, source: "sense_ir" })],
+    [/^EVENT\s+RFID\s+(\d+)\s+(\S+)(?:\s+(\S+))?/i, (m) => {
+      const slot = Number(m[1]);
+      const uid = m[2] === "-" ? "" : m[2];
+      noteSensors({ [`rfid${slot}`]: uid });
+      if (uid) sendEvent(slot, "rfid", { uid, ...(m[3] ? { cmd: m[3] } : {}) });
+    }],
+    [/^EVENT\s+IR\s+(\d+)\s+(\d+)/i, (m) => {
+      const slot = Number(m[1]);
+      const present = m[2] === "1";
+      noteSensors({ [`ir${slot}`]: present });
+      sendEvent(slot, "ir", { present, source: "sense_ir" });
+    }],
+    [/^EVENT\s+IR\s+(\d+)/i, (m) => {
+      const slot = Number(m[1]);
+      noteSensors({ [`ir${slot}`]: true });
+      sendEvent(slot, "ir", { present: true, source: "sense_ir" });
+    }],
     [/^EVENT\s+RETURN_OK\s+(\d+)(?:\s+(\S+))?/i, (m) => sendEvent(Number(m[1]), "return_ok", { via: "rfid_ir", ...(m[2] ? { cmd: m[2] } : {}) })],
     [/^EVENT\s+SERVO\s+(\d+)\s+(\S+)(?:\s+(start|done)\s+(\d+)\s+(\d+))?(?:\s+(\S+))?/i, (m) => sendEvent(Number(m[1]), "servo", {
       action: m[2],
-      deg: 90,
+      deg: 140,
       ...(m[3] ? { phase: String(m[3]).toLowerCase(), move_ms: Number(m[4]), since_start_ms: Number(m[5]) } : {}),
       ...(m[6] ? { cmd: m[6] } : {}),
     })],
@@ -266,44 +307,61 @@ async function main() {
     }
     try {
       const now = Date.now();
+      const body = await api.next();
+      if (body && body.has && !pending) {
+        slotCmd[body.slot] = body.id;
+        pending = {
+          id: body.id,
+          slot: body.slot,
+          timer: setTimeout(() => finish("timeout"), CMD_TIMEOUT_MS),
+        };
+        const action = String(body.action || "open");
+        const tag = `${body.slot} ${body.id}`;
+        const armOpen = (name) => {
+          send(`${name} ${tag}`);
+          sendEvent(body.slot, "servo", {
+            action: name === "OPEN_RETURN" ? "open_return" : name === "TEST_OPEN" ? "test_open" : "open",
+            phase: "start",
+            move_ms: 1680,
+            since_start_ms: 0,
+            deg: 140,
+            align: "motor",
+            cmd: String(body.id),
+          });
+        };
+        if (action === "sense_ir") {
+          send(`SENSE_IR ${body.slot}`);
+          await finish("sense_ir");
+        } else if (action === "sense_rfid") {
+          send(`SENSE_RFID ${body.slot}`);
+        } else if (action === "test_open") {
+          armOpen("TEST_OPEN");
+          await finish("test_open");
+        } else if (action === "test_close") {
+          send(`TEST_CLOSE ${tag}`);
+          await finish("test_close");
+        } else if (action === "open_return") {
+          armOpen("OPEN_RETURN");
+        } else if (action === "open") {
+          armOpen("OPEN");
+        } else {
+          console.warn("[cmd] unknown action", action);
+          await finish("unknown");
+        }
+      }
       if (api.presence && now - lastPresence >= 8000) {
         lastPresence = now;
-        await api.presence({ mcu_ok: mcuOk });
-      }
-      const body = await api.next();
-      if (!body || !body.has || pending) return;
-      slotCmd[body.slot] = body.id;
-      pending = {
-        id: body.id,
-        slot: body.slot,
-        timer: setTimeout(() => finish("timeout"), CMD_TIMEOUT_MS),
-      };
-      const action = String(body.action || "open");
-      const tag = `${body.slot} ${body.id}`;
-      if (action === "sense_ir") {
-        send(`SENSE_IR ${body.slot}`);
-        await finish("sense_ir");
-      } else if (action === "sense_rfid") {
-        send(`SENSE_RFID ${body.slot}`);
-      } else if (action === "test_open") {
-        send(`TEST_OPEN ${tag}`);
-        await finish("test_open");
-      } else if (action === "test_close") {
-        send(`TEST_CLOSE ${tag}`);
-        await finish("test_close");
-      } else if (action === "open_return") {
-        send(`OPEN_RETURN ${tag}`);
-      } else if (action === "open") {
-        send(`OPEN ${tag}`);
-      } else {
-        console.warn("[cmd] unknown action", action);
-        await finish("unknown");
+        api.presence({ mcu_ok: mcuOk }).catch((err) => console.error("[presence]", err.message));
       }
     } catch (e) {
       console.error("[poll]", e.message);
     } finally {
       pollGate.leave();
     }
+  }
+  if (typeof api.watch === "function") {
+    api.watch(() => { pollOnce(); });
+    console.log("[watch] commands");
   }
   setInterval(() => { pollOnce(); }, POLL_MS);
 }

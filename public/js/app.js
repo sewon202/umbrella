@@ -30,7 +30,7 @@ import {
   STATIONS,
 } from "/js/backend.js?v=123";
 import { startQrScan, stopQrScan, setTorch, getTorchOn, fitQrVideoCover } from "/js/qr-scan.js?v=59";
-import { createDoorSync } from "/js/door-sync.js?v=2";
+import { createDoorSync } from "/js/door-sync.js?v=7";
 import {
   initCampusMap,
   selectStation,
@@ -95,9 +95,10 @@ const STATION_QR = Object.fromEntries(STATIONS.map((s) => [s.code, s.qr || s.cod
 const $ = (id) => document.getElementById(id);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const doorSync = createDoorSync(localStorage);
-/** 서보 0→90도에 대응하는 화면 각도. 진행률은 모터와 같이 직선이다. */
-const DOOR_TURN = -70;
+/** 모터는 140도, 화면은 90도. 진행률·시간은 모터와 같다. */
+const DOOR_TURN = -90;
 let activeMotion = null;
+let pendingLead = null;
 /** 같은 대여소 QR이 이 횟수만큼 연속으로 읽혀야 넘어간다. */
 const QR_CONFIRM_HITS = 2;
 /** 같은 잘못된 QR을 붙잡고 있을 때 경고가 너무 빨리 겹치지 않게만 한다. 스캔은 멈추지 않는다. */
@@ -1177,11 +1178,13 @@ function applyLead(rows, note) {
     commandId: note.commandId,
     role: "lead",
   });
-  if (next && activeMotion) activeMotion.retarget(next);
+  if (!next) return;
+  pendingLead = next;
+  if (activeMotion) activeMotion.retarget(next);
 }
 
-/** 서보와 같은 속도로 그린다. 모터보다 앞서 있으면 늦추지 않고, 뒤처지면 앞으로 당긴다. */
-function trackDoor(el, fromDeg, toDeg, plan) {
+/** 서보와 같은 속도로 그린다. holdMs 동안은 닫힌 채 모터 시작 신호를 기다린다. */
+function trackDoor(el, fromDeg, toDeg, plan, holdMs = 0) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   el.classList.add("is-synced");
   el.classList.remove("opening", "closing", "open");
@@ -1189,34 +1192,52 @@ function trackDoor(el, fromDeg, toDeg, plan) {
   let startAt = plan.startAt;
   let moveMs = Math.max(1, plan.moveMs || 1);
   let finished = false;
+  let waiting = holdMs > 0;
+  let holdTimer = 0;
   const at = (now) => Math.max(0, Math.min(1, (now - startAt) / moveMs));
   const apply = (p) => {
     el.style.transform = `rotateY(${fromDeg + (toDeg - fromDeg) * p}deg)`;
   };
+  const stopWait = () => {
+    waiting = false;
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = 0;
+  };
   const retarget = (next) => {
     if (!next || finished) return;
-    const now = Date.now();
-    const nextMove = Math.max(1, next.moveMs || moveMs);
-    const motorP = Math.max(0, Math.min(1, (now - next.startAt) / nextMove));
-    if (motorP + 0.02 < at(now)) return;
+    stopWait();
     startAt = next.startAt;
-    moveMs = nextMove;
+    moveMs = Math.max(1, next.moveMs || moveMs);
   };
   const done = new Promise((resolve) => {
-    if (reduce || at(Date.now()) >= 1) {
+    const finish = () => {
+      if (finished) return;
       apply(1);
       finished = true;
+      stopWait();
       resolve();
+    };
+    if (!waiting && (reduce || at(Date.now()) >= 1)) {
+      finish();
       return;
+    }
+    if (waiting) {
+      holdTimer = setTimeout(() => {
+        if (finished || !waiting) return;
+        waiting = false;
+        if (startAt > Date.now()) startAt = Date.now();
+      }, holdMs);
     }
     const frame = () => {
       if (finished) return;
+      if (reduce && !waiting) {
+        finish();
+        return;
+      }
       const p = at(Date.now());
       apply(p);
-      if (p >= 0.999) {
-        apply(1);
-        finished = true;
-        resolve();
+      if (!waiting && p >= 0.999) {
+        finish();
         return;
       }
       requestAnimationFrame(frame);
@@ -1258,9 +1279,10 @@ async function playDoorOpen(slot, note) {
     el = doorEl(slot);
   }
   if (!el) return;
-  const plan = note ? doorSync.planLead(note) : doorSync.planFollow(Date.now());
+  const plan = pendingLead || (note ? doorSync.planLead(note) : doorSync.planFollow(Date.now()));
   const motion = trackDoor(el, 0, DOOR_TURN, plan);
   activeMotion = motion;
+  if (pendingLead && pendingLead !== plan) motion.retarget(pendingLead);
   try {
     await motion.done;
   } finally {
@@ -1324,6 +1346,7 @@ async function go() {
       state.busy = false;
       syncPickActions();
       setMsg(`${slot}번 문을 열어요. 우산을 걸어 넣어 주세요.`);
+      pendingLead = null;
       const closePromise = waitForReturnDoorClose(state.station, slot, openedAt, cmdId, (rows) => applyLead(rows, note));
       await playDoorOpen(slot, note);
       render();
@@ -1395,6 +1418,7 @@ async function go() {
       const cmdId = r && r.id;
       setMsg(`${slot}번 문을 열어요. 우산을 꺼내 주세요.`);
       render();
+      pendingLead = null;
       const closePromise = waitForRentDoorClose(state.station, slot, openedAt, cmdId, (rows) => applyLead(rows, note));
       await playDoorOpen(slot, note);
 

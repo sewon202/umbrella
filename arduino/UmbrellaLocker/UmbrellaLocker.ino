@@ -55,8 +55,10 @@ bool rgbBootActive = false;
 unsigned long rgbBootStart = 0;
 const bool IR_ACTIVE_LOW = true;
 
-const int DOOR_CLOSED_DEG = 0;   // 부팅 시 기본 각도
-const int DOOR_OPEN_DEG   = 90;
+// 180 끝단은 되돌아올 때 모터가 멈추는 경우가 있다.
+// 각도가 커지면 반시계라서, 열림 140→0(시계) / 닫힘 0→140.
+const int DOOR_CLOSED_DEG = 140;
+const int DOOR_OPEN_DEG   = 0;
 const unsigned long RFID_COOLDOWN_MS     = 400;
 const unsigned long IR_HOLD_MS           = 350;    // 반납: 태그 후 IR 연속 감지
 const unsigned long IR_GONE_STABLE_MS    = 250;    // 대여: IR 연속 미감지
@@ -64,14 +66,18 @@ const unsigned long OPEN_PRESENT_WAIT_MS = 700;    // 대여: 처음부터 비�
 const unsigned long RETURN_IR_ONLY_MS    = 1800;   // 반납: 태그 없이 IR만 이 시간이면 인정
 const unsigned long AUTO_CLOSE_DELAY_MS  = 300;    // 감지 후 닫기까지 대기
 const unsigned long OPEN_MAX_MS          = 25000;  // 안전: 강제 닫힘
-const unsigned long POLL_MS              = 200;    // 문 열기 명령을 더 자주 확인
+const unsigned long POLL_MS              = 80;     // 문 명령은 쉬는 틈마다 바로 확인
 const int DOOR_STEP_DEG                   = 2;
-const unsigned long DOOR_STEP_MS          = 30;    // 열림·닫힘 모두 90도 약 1.3초
-const unsigned long SERVO_SWEEP_MS        = (DOOR_OPEN_DEG / DOOR_STEP_DEG) * DOOR_STEP_MS;
+const unsigned long DOOR_STEP_MS          = 24;    // 140도 ≈ 1.68초
+const int DOOR_TRAVEL_DEG                 = DOOR_CLOSED_DEG > DOOR_OPEN_DEG
+                                              ? DOOR_CLOSED_DEG - DOOR_OPEN_DEG
+                                              : DOOR_OPEN_DEG - DOOR_CLOSED_DEG;
+const unsigned long SERVO_SWEEP_MS        = (DOOR_TRAVEL_DEG / DOOR_STEP_DEG) * DOOR_STEP_MS;
 const unsigned long SERVO_TAIL_MS         = 6 * 20;
 const unsigned long PRESENCE_MS          = 12000;  // 평소 하트비트. IR 변화는 따로
 const unsigned long PRESENCE_BUSY_MS     = 8000;   // 문 감시 중 하트비트
-const unsigned long IR_REPORT_MIN_MS     = 80;     // IR 엣지 디바운스
+const unsigned long IR_REPORT_MIN_MS     = 30;     // IR 엣지 디바운스
+const unsigned long RFID_MISS_MS         = 350;    // 카드가 떨어진 뒤 미인식으로 바꾸는 시간
 const unsigned long WIFI_RETRY_MS        = 10000;
 const unsigned long WIRED_TIMEOUT_MS     = 5000;
 const unsigned long TOKEN_REFRESH_MS     = 50UL * 60UL * 1000UL;
@@ -217,6 +223,8 @@ String uidToString(const MFRC522::Uid& uid) {
 const int SERVO_MIN_US = 544;
 const int SERVO_MAX_US = 2400;
 unsigned long lastServoFrameMs = 0;
+// 움직이는 동안에만 true. 대기(닫힘) 중 연속 홀드 펄스가 소음·미세 떨림을 만든다.
+bool servoDrive[2] = { false, false };
 
 int angleToUs(int angle) {
   if (angle < 0) angle = 0;
@@ -224,10 +232,18 @@ int angleToUs(int angle) {
   return SERVO_MIN_US + (long)(SERVO_MAX_US - SERVO_MIN_US) * angle / 180;
 }
 
-/** 각 슬롯 핀에 그 슬롯의 각도만 보낸다. 다른 슬롯 각도는 바꾸지 않는다. */
+bool servoNeedsPulse(uint8_t index) {
+  return servoDrive[index] || slots[index].door != DOOR_IDLE;
+}
+
+/** 구동이 필요한 슬롯만 펄스. 쉬는 슬롯은 LOW로 두어 모터가 힘주지 않게 한다. */
 void pulseServos() {
   if (!ENABLE_SERVO) return;
   for (uint8_t i = 0; i < 2; i++) {
+    if (!servoNeedsPulse(i)) {
+      digitalWrite(SERVO_PINS[i], LOW);
+      continue;
+    }
     digitalWrite(SERVO_PINS[i], HIGH);
     delayMicroseconds(angleToUs(slots[i].angle));
     digitalWrite(SERVO_PINS[i], LOW);
@@ -236,19 +252,29 @@ void pulseServos() {
   lastServoFrameMs = millis();
 }
 
+void releaseServo(uint8_t index) {
+  if (index > 1) return;
+  servoDrive[index] = false;
+  digitalWrite(SERVO_PINS[index], LOW);
+}
+
+/** 문이 열린 채 감시 중일 때만 홀드. 둘 다 닫혀 대기면 펄스를 보내지 않는다. */
 void serviceServos() {
   if (!ENABLE_SERVO) return;
+  if (!servoNeedsPulse(0) && !servoNeedsPulse(1)) return;
   if (millis() - lastServoFrameMs < 20) return;
   pulseServos();
 }
 
 void moveDoor(Slot& s, int target) {
   if (s.angle == target) return;
+  const uint8_t idx = s.id - 1;
   const int other = s.id == 1 ? slots[1].angle : slots[0].angle;
   Serial.print("[SERVO] slot "); Serial.print(s.id);
   Serial.print(" "); Serial.print(s.angle); Serial.print(" -> "); Serial.print(target);
   Serial.print(" | other stays "); Serial.println(other);
   if (!ENABLE_SERVO) { s.angle = target; return; }
+  servoDrive[idx] = true;
   const int step = target > s.angle ? DOOR_STEP_DEG : -DOOR_STEP_DEG;
   while (s.angle != target) {
     int next = s.angle + step;
@@ -265,11 +291,13 @@ void moveDoor(Slot& s, int target) {
 
 void openDoor(Slot& s) {
   moveDoor(s, DOOR_OPEN_DEG);
+  // servoDrive 는 closeDoor 까지 유지해 열린 각도를 잡고, 닫힌 뒤에는 푼다.
   recoverRfid();
 }
 
 void closeDoor(Slot& s) {
   moveDoor(s, DOOR_CLOSED_DEG);
+  releaseServo(s.id - 1);
   recoverRfid();
 }
 
@@ -315,6 +343,7 @@ void reportEvent(const Slot& s, const char* kind, const String& extra) {
 }
 
 void reportServo(const Slot& s, const char* action, const char* phase, unsigned long moveMs, unsigned long startMs);
+void announceServoStart(Slot& s, const char* action);
 
 // ---------- 문 감시 (자동 닫힘) ----------
 void startWatch(Slot& s, bool isReturn) {
@@ -328,7 +357,7 @@ void startWatch(Slot& s, bool isReturn) {
 
 void finishWatch(Slot& s, const char* action) {
   s.door = DOOR_IDLE;
-  // 모터를 먼저 움직인다. 시간 기록은 끝난 뒤에 큐에만 넣는다.
+  announceServoStart(s, action);
   const unsigned long t0 = millis();
   closeDoor(s);
   const unsigned long elapsed = millis() - t0;
@@ -418,10 +447,13 @@ void handleReader(Slot& s) {
   if (!s.rfid.PICC_IsNewCardPresent() || !s.rfid.PICC_ReadCardSerial()) {
     if (rfidSeen[idx].length()) {
       if (!rfidMissSince[idx]) rfidMissSince[idx] = millis();
-      if (millis() - rfidMissSince[idx] > 2500) {
+      if (millis() - rfidMissSince[idx] > RFID_MISS_MS) {
         rfidSeen[idx] = "";
         rfidMissSince[idx] = 0;
         presenceDirty = true;
+        Serial.print("EVENT RFID ");
+        Serial.print(s.id);
+        Serial.println(" -");
       }
     }
     return;
@@ -434,6 +466,10 @@ void handleReader(Slot& s) {
     rfidSeen[idx] = uid;
     presenceDirty = true;
     Serial.print("[RFID] slot "); Serial.print(s.id); Serial.print(" UID="); Serial.println(uid);
+    Serial.print("EVENT RFID ");
+    Serial.print(s.id);
+    Serial.print(' ');
+    Serial.println(uid);
   }
   if (millis() - s.lastTagMs < RFID_COOLDOWN_MS) return;
   s.lastTagMs = millis();
@@ -446,12 +482,27 @@ void handleReader(Slot& s) {
   }
 }
 
+/** 시리얼로만 알린다. 모터 앞에서 HTTPS를 열지 않는다. */
+void announceServoStart(Slot& s, const char* action) {
+  Serial.print("EVENT SERVO ");
+  Serial.print(s.id);
+  Serial.print(' ');
+  Serial.print(action);
+  Serial.print(" start ");
+  Serial.print(SERVO_SWEEP_MS);
+  Serial.print(" 0");
+  printCmdToken(s);
+  Serial.println();
+}
+
 /** 장치 테스트 전용. 대여/반납 감시는 시작하지 않는다. */
 void testServo(Slot& s, bool opening, const String& cmdId) {
   s.door = DOOR_IDLE;
   s.cmd = cmdId;
   s.irSince = 0;
   s.rfidOk = false;
+  if (opening) announceServoStart(s, "test_open");
+  else announceServoStart(s, "test_close");
   const unsigned long t0 = millis();
   if (opening) openDoor(s);
   else closeDoor(s);
@@ -464,7 +515,6 @@ void testServo(Slot& s, bool opening, const String& cmdId) {
 void executeCommand(Slot& s, bool isReturn, const String& cmdId) {
   s.cmd = cmdId;
   const char* action = isReturn ? "open_return" : "open";
-  // 통신보다 모터가 먼저다. 측정 이벤트는 움직임이 끝난 뒤 하나다.
   const unsigned long t0 = millis();
   openDoor(s);
   startWatch(s, isReturn);
@@ -1274,8 +1324,7 @@ void pollCommands() {
     if (!firebaseLogin(true)) return;
     if (!httpsRequest("firestore.googleapis.com", "POST", path, body, idToken, resp, 8000)) return;
   }
-  sslDrop();  // 이전 응답이 다음 명령에 섞여 다른 슬롯이 열리지 않게 연결을 닫는다
-
+  // 응답을 끝까지 읽었으면 연결을 유지한다. 매번 TLS를 다시 하면 문 명령이 늦어진다.
   // 오래된 sense/stale 이 앞에 있어도 같은 응답에서 연속 처리 → open이 막히지 않음
   int searchFrom = 0;
   for (int n = 0; n < 5; n++) {
@@ -1294,7 +1343,7 @@ void setup() {
   Serial.begin(9600);
   while (!Serial && (unsigned long)(millis() - rgbBootStart) < 3000) rgbService(20);
   rgbService(200);
-  Serial.println("[BOOT] UmbrellaLocker v7 — servo timing");
+  Serial.println("[BOOT] UmbrellaLocker v15 — fast sensors");
 
   for (int i = 0; i < 2; i++) {
     pinMode(SS_PINS[i], OUTPUT);
@@ -1325,10 +1374,15 @@ void setup() {
   }
   Serial.print("[BOOT] ready station="); Serial.println(STATION_CODE);
   if (ENABLE_SERVO) {
+    // 부팅 시 한 번만 닫힘 위치로 맞춘 뒤 펄스를 끊는다. 이후 대기 중에는 보내지 않는다.
+    servoDrive[0] = true;
+    servoDrive[1] = true;
     for (uint8_t n = 0; n < 25; n++) {
       pulseServos();
       delay(20);
     }
+    releaseServo(0);
+    releaseServo(1);
   }
 }
 
@@ -1340,23 +1394,25 @@ void loop() {
     updateWatch(s);
     handleReader(s);
   }
-  pollIrEdges();  // 유선이어도 IR 엣지 시리얼은 보낸다. HTTPS 없음
+  pollIrEdges();
   if (isWired()) return;
 
-  // 폴링 한 번이 POLL_MS보다 길면 아래가 영원히 명령만 해서 하트비트가 멈춘다.
-  // 센서 변화는 바로, 주기 신호는 4초마다, 그 사이에 문 명령을 확인한다.
-  static unsigned long presenceTryMs = 0;
-  const bool heartbeatDue = millis() - lastPresenceMs >= 4000;
-  if ((presenceDirty || heartbeatDue) && millis() - presenceTryMs >= 700) {
-    presenceTryMs = millis();
-    presenceDirty = false;
-    if (!reportPresence()) Serial.println("[HB] fail");
-    return;
-  }
-
+  // 문 명령이 먼저다. 센서 변화가 있을 때만 그 다음에 바로 올린다.
   if (millis() - lastPollMs >= POLL_MS) {
     lastPollMs = millis();
     pollCommands();
+  }
+
+  const bool heartbeatLate = millis() - lastPresenceMs >= 6000;
+  static unsigned long presenceTryMs = 0;
+  if ((presenceDirty || heartbeatLate) && millis() - presenceTryMs >= 120) {
+    presenceTryMs = millis();
+    const bool retrySensor = presenceDirty;
+    presenceDirty = false;
+    if (!reportPresence()) {
+      if (retrySensor) presenceDirty = true;
+      Serial.println("[HB] fail");
+    }
     return;
   }
 

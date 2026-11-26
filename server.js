@@ -745,12 +745,17 @@ app.post("/api/device/presence", requireDeviceKey, (req, res) => {
   const station = toStation((req.body && req.body.station) || "A1");
   const now = Date.now();
   devicePresence[station] = {
+    ...(devicePresence[station] || {}),
     code: station,
     last_seen: now,
     link: String((req.body && req.body.link) || "wired"),
-    mcu_ok: !!(req.body && req.body.mcu_ok),
-    wifi_rssi: req.body && req.body.wifi_rssi != null ? Number(req.body.wifi_rssi) : null,
-    wifi_ip: (req.body && req.body.wifi_ip) || null,
+    mcu_ok: req.body && req.body.mcu_ok != null ? !!req.body.mcu_ok : (devicePresence[station] && devicePresence[station].mcu_ok),
+    wifi_rssi: req.body && req.body.wifi_rssi != null ? Number(req.body.wifi_rssi) : (devicePresence[station] && devicePresence[station].wifi_rssi),
+    wifi_ip: (req.body && req.body.wifi_ip) || (devicePresence[station] && devicePresence[station].wifi_ip) || null,
+    ...(req.body && req.body.ir1 != null ? { ir1: !!req.body.ir1 } : {}),
+    ...(req.body && req.body.ir2 != null ? { ir2: !!req.body.ir2 } : {}),
+    ...(req.body && req.body.rfid1 != null ? { rfid1: String(req.body.rfid1) } : {}),
+    ...(req.body && req.body.rfid2 != null ? { rfid2: String(req.body.rfid2) } : {}),
   };
   res.json({ ok: true, station });
 });

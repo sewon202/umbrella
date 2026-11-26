@@ -1,7 +1,8 @@
 /**
  * 화면 문과 서보를 같은 시각에 두는 보정.
  *
- * 서보는 2도마다 30ms, 0→90도를 1350ms 동안 일정하게 움직인다.
+ * 서보는 2도마다 24ms, 0→140도를 약 1680ms 동안 일정하게 움직인다.
+ * 화면 문은 같은 시간에 90도만 연다.
  * 화면 진행률도 그 직선이다. CSS ease 로 앞서가지 않는다.
  *
  * 시각
@@ -27,12 +28,12 @@
  */
 
 export const SERVO_STEP_DEG = 2;
-export const SERVO_STEP_MS = 30;
-export const SERVO_TRAVEL_DEG = 90;
+export const SERVO_STEP_MS = 24;
+export const SERVO_TRAVEL_DEG = 140;
 export const SERVO_POLL_MS = 200;
 export const SERVO_SWEEP_MS = (SERVO_TRAVEL_DEG / SERVO_STEP_DEG) * SERVO_STEP_MS;
 
-const STORE_KEY = "umbrella.doorSync.v1";
+const STORE_KEY = "umbrella.doorSync.v3";
 
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
@@ -251,7 +252,17 @@ export function createDoorSync(storage) {
       uplinkMs,
       fallbackMove: state.moveMs,
     });
-    const startAt = ctx.recvAt - parsed.age;
+    let startAt = ctx.recvAt - parsed.age;
+    if (ctx && ctx.role === "lead" && parsed.phase === "start") {
+      const since = Number(payloadOf(ev).since_start_ms);
+      const echo = parsed.echoMs;
+      if (!Number.isFinite(since) || since <= 40) {
+        // align=motor 는 모터가 출발하는 시각에 찍힌 신호다. 그 시각으로 맞춘다.
+        // 그 외 시작 신호는 도착 시각에 재생한다. 전송 전에 찍힌 시각으로 되감으면 화면이 먼저 열린다.
+        const stampedAtMotor = payloadOf(ev).align === "motor" && echo != null && echo <= 2000;
+        startAt = stampedAtMotor ? ctx.recvAt - echo : ctx.recvAt;
+      }
+    }
     if (fresh && inRange(parsed.moveMs, 900, 2500)) {
       state.moveMs = state.motionSamples
         ? blend(state.moveMs, parsed.moveMs, state.motionSamples)
@@ -266,7 +277,12 @@ export function createDoorSync(storage) {
         save();
       } else if (fresh) save();
     } else if (fresh) save();
-    return { startAt, moveMs: state.moveMs, progress: clamp(parsed.age / state.moveMs, 0, 1), phase: parsed.phase };
+    return {
+      startAt,
+      moveMs: state.moveMs,
+      progress: clamp((ctx.recvAt - startAt) / state.moveMs, 0, 1),
+      phase: parsed.phase,
+    };
   }
 
   return {
