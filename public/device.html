@@ -50,11 +50,11 @@
     </div>
     <div class="sensor-grid">
       <div class="sensor-box">
-        <h3>IR 슬롯1 (하트비트)</h3>
+        <h3>IR 슬롯1</h3>
         <div class="val" id="irLive1">—</div>
       </div>
       <div class="sensor-box">
-        <h3>IR 슬롯2 (하트비트)</h3>
+        <h3>IR 슬롯2</h3>
         <div class="val" id="irLive2">—</div>
       </div>
       <div class="sensor-box">
@@ -109,9 +109,9 @@
 <script type="module">
 import {
   getMode, loginDevice, openDoor, health, debugRecent, getDevicePresence,
-  watchDevicePresence, getRecentDeviceEvent, friendlyError,
+  watchDevicePresence, watchDeviceEvents, getRecentDeviceEvent, friendlyError,
   STATIONS, MAX_HW_SLOT, stationLabel,
-} from "/js/backend.js?v=98";
+} from "/js/backend.js?v=123";
 
 const $ = (id) => document.getElementById(id);
 const stationsOrdered = [...STATIONS].sort((a, b) => Number(!!b.live) - Number(!!a.live));
@@ -150,6 +150,50 @@ function freshPresence(p) {
   if (!p || !p.last_seen) return p;
   const age = Date.now() - Number(p.last_seen);
   return { ...p, age_ms: age, online: age <= ONLINE_MS && age >= -20000 };
+}
+
+const seenSensors = { ir1: null, ir2: null, rfid1: null, rfid2: null };
+
+function pushSensorLog(line) {
+  const cur = $("recent").textContent || "";
+  const lines = cur && !cur.startsWith("{") && cur !== "loading…" ? cur.split("\n") : [];
+  lines.unshift(line);
+  $("recent").textContent = lines.slice(0, 8).join("\n");
+}
+
+function notePresenceSensors(p) {
+  if (!p) return;
+  const when = new Date().toLocaleTimeString();
+  for (const slot of [1, 2]) {
+    const ir = !!p["ir" + slot];
+    const ik = "ir" + slot;
+    if (seenSensors[ik] !== null && seenSensors[ik] !== ir) {
+      $("irLast").innerHTML = `${irLabel(ir)} · ${slot}번 · ${when}`;
+      pushSensorLog(`${when}  IR ${slot}  ${ir ? "감지" : "미감지"}`);
+    }
+    seenSensors[ik] = ir;
+    const uid = String(p["rfid" + slot] || "");
+    const rk = "rfid" + slot;
+    if (seenSensors[rk] !== null && seenSensors[rk] !== uid) {
+      pushSensorLog(`${when}  RFID ${slot}  ${uid || "미인식"}`);
+    }
+    seenSensors[rk] = uid;
+  }
+}
+
+function applySensorEvent(row) {
+  if (!row || (row.kind !== "ir" && row.kind !== "rfid")) return;
+  const slot = Number(row.slot) === 2 ? 2 : 1;
+  const when = new Date(row.created_at || Date.now()).toLocaleTimeString();
+  if (row.kind === "ir") {
+    const payload = row.payload || {};
+    const present = payload.present === true || payload.present === "true" || payload.present === 1;
+    $(slot === 2 ? "irLive2" : "irLive1").innerHTML = irLabel(present);
+    $("irLast").innerHTML = `${irLabel(present)} · ${slot}번 · ${when}`;
+    return;
+  }
+  const uid = String((row.payload && row.payload.uid) || "");
+  $(slot === 2 ? "rfidLive2" : "rfidLive1").innerHTML = rfidLabel(uid);
 }
 
 function renderPresence(p) {
@@ -200,6 +244,7 @@ function renderPresence(p) {
   $("irLive2").innerHTML = p ? irLabel(!!p.ir2) : "—";
   $("rfidLive1").innerHTML = p ? rfidLabel(p.rfid1) : "—";
   $("rfidLive2").innerHTML = p ? rfidLabel(p.rfid2) : "—";
+  notePresenceSensors(p);
 }
 
 function rfidLabel(uid) {
@@ -264,7 +309,7 @@ async function waitForEvent(kind, since, timeoutMs, label) {
     });
     if (ev) return ev;
     $("msg").textContent = `${label} 대기 중… ${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))}s`;
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 150));
   }
   return null;
 }
@@ -326,7 +371,7 @@ $("btnRfid").onclick = async () => {
       }
       if (!uid) {
         $("msg").textContent = `RFID ${slot}에 카드를 대 주세요… ${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))}s`;
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, 120));
       }
     }
     $("msg").textContent = uid
@@ -339,14 +384,31 @@ $("btnRfid").onclick = async () => {
 };
 
 let unwatchPresence = null;
+let unwatchEvents = null;
 function startPresenceWatch() {
   if (unwatchPresence) {
     try { unwatchPresence(); } catch (_) { /* ignore */ }
     unwatchPresence = null;
   }
+  if (unwatchEvents) {
+    try { unwatchEvents(); } catch (_) { /* ignore */ }
+    unwatchEvents = null;
+  }
   const station = $("station").value;
+  const eventsAfter = Date.now() - 1000;
   unwatchPresence = watchDevicePresence(station, (p) => {
     renderPresence(p);
+  });
+  unwatchEvents = watchDeviceEvents(station, (rows) => {
+    const seen = {};
+    for (const row of rows || []) {
+      const at = Number(row.created_at) || 0;
+      if (at < eventsAfter) continue;
+      const key = `${row.kind}:${row.slot}`;
+      if (seen[key]) continue;
+      seen[key] = true;
+      applySensorEvent(row);
+    }
   });
 }
 
@@ -368,9 +430,8 @@ $("slot").onchange = refreshSensorEvents;
       $("health").textContent = JSON.stringify({ mode: getMode(), ...h }, null, 2);
     }).catch(() => {});
     debugRecent().then((r) => {
-      $("recent").textContent = JSON.stringify(r, null, 2);
+      if (!unwatchEvents) $("recent").textContent = JSON.stringify(r, null, 2);
     }).catch(() => {});
-    refreshSensorEvents();
   }, (window.UMBRELLA?.cost?.uiRefreshMs) || 2000);
 })();
 </script>

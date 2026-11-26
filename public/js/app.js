@@ -38,7 +38,7 @@ import {
   resizeCampusMap,
   summarizeSlots,
   plannedSlotDetail,
-} from "/js/map-view.js?v=92";
+} from "/js/map-view.js?v=94";
 import { initUiScale, updateUiScale, setShellScrollLock } from "/js/ui-scale.js?v=64";
 import {
   isRentDoorSettled,
@@ -1279,8 +1279,10 @@ async function playDoorOpen(slot, note) {
     el = doorEl(slot);
   }
   if (!el) return;
-  const plan = pendingLead || (note ? doorSync.planLead(note) : doorSync.planFollow(Date.now()));
-  const motion = trackDoor(el, 0, DOOR_TURN, plan);
+  // 예측으로 먼저 열지 않는다. 모터 시작 신호가 올 때까지 닫힌 채 기다린다.
+  const duration = doorSync.motionDuration();
+  const plan = pendingLead || { startAt: Date.now() + 20000, moveMs: duration, progress: 0 };
+  const motion = trackDoor(el, 0, DOOR_TURN, plan, pendingLead ? 0 : 12000);
   activeMotion = motion;
   if (pendingLead && pendingLead !== plan) motion.retarget(pendingLead);
   try {

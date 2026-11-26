@@ -16,7 +16,8 @@
     MCU → PC : PONG | ACK/DONE OPEN[_RETURN] <slot> | ERR …
                EVENT RFID <slot> <uid> | EVENT RETURN_OK <slot> | EVENT SERVO <slot> <action>
 
-  핀: RFID1 SS D10 / RST D9, RFID2 SS D8 / RST D7, Servo D5 / D6, IR D2 / D3
+  핀: RFID1 SS D10 / RST D9, RFID2 SS D8 / RST D7, Servo1 D6 / Servo2 D5, IR1 D2 / IR2 D3
+      슬롯1 = 모터2·RFID2·IR2, 슬롯2 = 모터1·RFID1·IR1.
       서보는 라이브러리를 쓰지 않는다. UNO R4 Servo는 D5·D6이 타이머를 나눠
       슬롯 1을 움직이면 슬롯 2 펄스도 같이 바뀐다. 각 핀에 자기 각도만 보낸다.
       RGB 모듈: R=A1, G=A2, B=A3 (아날로그, V=5V 공통양극).
@@ -43,10 +44,10 @@ const bool  ENABLE_SERVO = true;
 const bool  ENABLE_WIFI  = true;   // false → USB 브리지만
 // =================================
 
-const uint8_t SS_PINS[2]    = { 10, 8 };
-const uint8_t RST_PINS[2]   = { 9, 7 };
-const uint8_t IR_PINS[2]    = { 2, 3 };
-const uint8_t SERVO_PINS[2] = { 5, 6 };
+const uint8_t SS_PINS[2]    = { 8, 10 }; // 슬롯1=RFID2, 슬롯2=RFID1
+const uint8_t RST_PINS[2]   = { 7, 9 };
+const uint8_t IR_PINS[2]    = { 3, 2 };  // 슬롯1=IR2, 슬롯2=IR1
+const uint8_t SERVO_PINS[2] = { 5, 6 };  // 슬롯1=모터2(D5), 슬롯2=모터1(D6)
 // RGB 모듈. V=5V 공통양극이라 핀이 LOW일 때 켜진다. A1~A3는 PWM 핀이 아니라 부팅 중에만 소프트웨어로 밝기를 만든다.
 const uint8_t RGB_R = A1;
 const uint8_t RGB_G = A2;
@@ -76,8 +77,8 @@ const unsigned long SERVO_SWEEP_MS        = (DOOR_TRAVEL_DEG / DOOR_STEP_DEG) * 
 const unsigned long SERVO_TAIL_MS         = 6 * 20;
 const unsigned long PRESENCE_MS          = 12000;  // 평소 하트비트. IR 변화는 따로
 const unsigned long PRESENCE_BUSY_MS     = 8000;   // 문 감시 중 하트비트
-const unsigned long IR_REPORT_MIN_MS     = 30;     // IR 엣지 디바운스
-const unsigned long RFID_MISS_MS         = 350;    // 카드가 떨어진 뒤 미인식으로 바꾸는 시간
+const unsigned long IR_REPORT_MIN_MS     = 15;     // IR 엣지 디바운스
+const unsigned long RFID_MISS_MS         = 200;    // 카드가 떨어진 뒤 미인식으로 바꾸는 시간
 const unsigned long WIFI_RETRY_MS        = 10000;
 const unsigned long WIRED_TIMEOUT_MS     = 5000;
 const unsigned long TOKEN_REFRESH_MS     = 50UL * 60UL * 1000UL;
@@ -223,8 +224,6 @@ String uidToString(const MFRC522::Uid& uid) {
 const int SERVO_MIN_US = 544;
 const int SERVO_MAX_US = 2400;
 unsigned long lastServoFrameMs = 0;
-// 움직이는 동안에만 true. 대기(닫힘) 중 연속 홀드 펄스가 소음·미세 떨림을 만든다.
-bool servoDrive[2] = { false, false };
 
 int angleToUs(int angle) {
   if (angle < 0) angle = 0;
@@ -232,18 +231,10 @@ int angleToUs(int angle) {
   return SERVO_MIN_US + (long)(SERVO_MAX_US - SERVO_MIN_US) * angle / 180;
 }
 
-bool servoNeedsPulse(uint8_t index) {
-  return servoDrive[index] || slots[index].door != DOOR_IDLE;
-}
-
-/** 구동이 필요한 슬롯만 펄스. 쉬는 슬롯은 LOW로 두어 모터가 힘주지 않게 한다. */
+/** 두 슬롯 모두 마지막 각도로 20ms마다 펄스. 신호를 끄면 힘이 빠져 문이 밀린다. */
 void pulseServos() {
   if (!ENABLE_SERVO) return;
   for (uint8_t i = 0; i < 2; i++) {
-    if (!servoNeedsPulse(i)) {
-      digitalWrite(SERVO_PINS[i], LOW);
-      continue;
-    }
     digitalWrite(SERVO_PINS[i], HIGH);
     delayMicroseconds(angleToUs(slots[i].angle));
     digitalWrite(SERVO_PINS[i], LOW);
@@ -252,52 +243,97 @@ void pulseServos() {
   lastServoFrameMs = millis();
 }
 
-void releaseServo(uint8_t index) {
-  if (index > 1) return;
-  servoDrive[index] = false;
-  digitalWrite(SERVO_PINS[index], LOW);
-}
-
-/** 문이 열린 채 감시 중일 때만 홀드. 둘 다 닫혀 대기면 펄스를 보내지 않는다. */
 void serviceServos() {
   if (!ENABLE_SERVO) return;
-  if (!servoNeedsPulse(0) && !servoNeedsPulse(1)) return;
   if (millis() - lastServoFrameMs < 20) return;
   pulseServos();
 }
 
+// 0 자동, 1 열림(빨강), 2 닫힘(빨강 깜빡). 공통 애노드라 켤 때 LOW.
+uint8_t ledForce = 0;
+
+void showLed() {
+  if (rgbBootActive) return;
+  rgbPins();
+  uint8_t mode = ledForce;
+  if (!mode) {
+    bool ready = false;
+    for (uint8_t i = 0; i < 2; i++) {
+      if (rfidSeen[i].length() && irPresent(slots[i])) ready = true;
+    }
+    mode = ready ? 3 : 0;
+  }
+  const bool blinkOn = ((millis() / 180) % 2) == 0;
+  const bool red = mode == 1 || (mode == 2 && blinkOn);
+  const bool green = mode == 3;
+  digitalWrite(RGB_R, red ? LOW : HIGH);
+  digitalWrite(RGB_G, green ? LOW : HIGH);
+  digitalWrite(RGB_B, HIGH);
+}
+
+bool armStartPost = false;
+Slot* armStartSlot = nullptr;
+const char* armStartAction = "";
+
+void armMotorStart(Slot& s, const char* action) {
+  armStartSlot = &s;
+  armStartAction = action;
+  armStartPost = true;
+}
+
+void flushMotorStart() {
+  if (!armStartPost || !armStartSlot || !armStartAction) return;
+  armStartPost = false;
+  postServoStartAsync(*armStartSlot, armStartAction);
+}
+
+void waitStep(unsigned long ms) {
+  flushMotorStart();
+  const unsigned long until = millis() + ms;
+  while ((long)(until - millis()) > 0) {
+    showLed();
+    sipDetachedHttp();
+    delay(5);
+  }
+}
+
 void moveDoor(Slot& s, int target) {
-  if (s.angle == target) return;
-  const uint8_t idx = s.id - 1;
+  if (s.angle == target) {
+    flushMotorStart();
+    return;
+  }
   const int other = s.id == 1 ? slots[1].angle : slots[0].angle;
   Serial.print("[SERVO] slot "); Serial.print(s.id);
   Serial.print(" "); Serial.print(s.angle); Serial.print(" -> "); Serial.print(target);
   Serial.print(" | other stays "); Serial.println(other);
   if (!ENABLE_SERVO) { s.angle = target; return; }
-  servoDrive[idx] = true;
   const int step = target > s.angle ? DOOR_STEP_DEG : -DOOR_STEP_DEG;
   while (s.angle != target) {
     int next = s.angle + step;
     if ((step > 0 && next > target) || (step < 0 && next < target)) next = target;
     s.angle = next;
     pulseServos();
-    delay(DOOR_STEP_MS);
+    waitStep(DOOR_STEP_MS);
   }
   for (uint8_t n = 0; n < 6; n++) {
     pulseServos();
-    delay(20);
+    waitStep(20);
   }
 }
 
 void openDoor(Slot& s) {
+  ledForce = 1;
+  showLed();
   moveDoor(s, DOOR_OPEN_DEG);
-  // servoDrive 는 closeDoor 까지 유지해 열린 각도를 잡고, 닫힌 뒤에는 푼다.
+  ledForce = 0;
   recoverRfid();
 }
 
 void closeDoor(Slot& s) {
+  ledForce = 2;
+  showLed();
   moveDoor(s, DOOR_CLOSED_DEG);
-  releaseServo(s.id - 1);
+  ledForce = 0;
   recoverRfid();
 }
 
@@ -501,11 +537,12 @@ void testServo(Slot& s, bool opening, const String& cmdId) {
   s.cmd = cmdId;
   s.irSince = 0;
   s.rfidOk = false;
-  if (opening) announceServoStart(s, "test_open");
+  if (opening) armMotorStart(s, "test_open");
   else announceServoStart(s, "test_close");
   const unsigned long t0 = millis();
   if (opening) openDoor(s);
   else closeDoor(s);
+  dropDetachedHttp();
   presenceDirty = true;
   const unsigned long elapsed = millis() - t0;
   const unsigned long sweep = elapsed > SERVO_TAIL_MS ? elapsed - SERVO_TAIL_MS : elapsed;
@@ -515,8 +552,10 @@ void testServo(Slot& s, bool opening, const String& cmdId) {
 void executeCommand(Slot& s, bool isReturn, const String& cmdId) {
   s.cmd = cmdId;
   const char* action = isReturn ? "open_return" : "open";
+  armMotorStart(s, action);
   const unsigned long t0 = millis();
   openDoor(s);
+  dropDetachedHttp();
   startWatch(s, isReturn);
   presenceDirty = true;
   const unsigned long elapsed = millis() - t0;
@@ -824,12 +863,53 @@ bool sslEnsure(const char* host) {
   return false;
 }
 
+void pollSerial();
+void pollIrEdges();
+void handleReader(Slot& s);
+void postServoStartAsync(Slot& s, const char* action);
+void dropDetachedHttp();
+void sipDetachedHttp();
+
+static uint8_t httpsDepth = 0;
+bool httpDetach = false;
+
+void dropDetachedHttp() {
+  if (!httpDetach) return;
+  while (ssl.available()) ssl.read();
+  sslDrop();
+  httpDetach = false;
+  httpsDepth = 0;
+}
+
+void sipDetachedHttp() {
+  if (!httpDetach) return;
+  while (ssl.available()) ssl.read();
+}
+
+/** HTTPS를 기다리는 빈 시간에 센서를 읽는다. 응답 바이트가 오면 바로 받는다. */
+void serviceSensorsIfIdle() {
+  pollIrEdges();
+  if (ssl.available()) return;
+  static unsigned long lastRfid = 0;
+  if (millis() - lastRfid < 40) return;
+  lastRfid = millis();
+  static uint8_t which = 0;
+  handleReader(slots[which]);
+  which ^= 1;
+}
+
+void pauseNet() {
+  serviceServos();
+  serviceSensorsIfIdle();
+  if (!ssl.available()) delay(1);
+}
+
 bool readBodyBytes(String& out, long remain, unsigned long deadline) {
   char tmp[161];
   while (remain > 0 && millis() < deadline && (int)out.length() < HTTP_BODY_MAX) {
     if (!ssl.available()) {
       if (!ssl.connected()) break;
-      delay(1);
+      pauseNet();
       continue;
     }
     int want = 160;
@@ -847,10 +927,25 @@ bool readBodyBytes(String& out, long remain, unsigned long deadline) {
 }
 
 /** HTTPS 요청 (gzip 금지, Content-Length / chunked / close 지원). Date 헤더로 시계 보정. */
+bool httpsRequestInner(const char* host, const char* method, const String& path,
+                        const String& body, const String& bearer, String& responseOut,
+                        int timeoutMs);
+
 bool httpsRequest(const char* host, const char* method, const String& path,
                   const String& body, const String& bearer, String& responseOut,
                   int timeoutMs = 20000) {
   responseOut = "";
+  dropDetachedHttp();
+  if (httpsDepth) return false;
+  httpsDepth++;
+  const bool okReq = httpsRequestInner(host, method, path, body, bearer, responseOut, timeoutMs);
+  if (httpsDepth) httpsDepth--;
+  return okReq;
+}
+
+bool httpsRequestInner(const char* host, const char* method, const String& path,
+                               const String& body, const String& bearer, String& responseOut,
+                               int timeoutMs) {
   if (!waitForNetworkReady() || !sslEnsure(host)) return false;
 
   ssl.print(method); ssl.print(" "); ssl.print(path); ssl.println(" HTTP/1.1");
@@ -871,7 +966,7 @@ bool httpsRequest(const char* host, const char* method, const String& path,
   ssl.flush();
 
   const unsigned long deadline = millis() + (unsigned long)timeoutMs;
-  while (!ssl.available() && millis() < deadline) delay(1);
+  while (!ssl.available() && millis() < deadline) pauseNet();
   if (!ssl.available()) {
     Serial.println("[HTTPS] no response");
     sslDrop();
@@ -891,7 +986,7 @@ bool httpsRequest(const char* host, const char* method, const String& path,
   while (millis() < deadline) {
     if (!ssl.available()) {
       if (!ssl.connected()) break;
-      delay(2);
+      pauseNet();
       continue;
     }
     String line = ssl.readStringUntil('\n');
@@ -915,7 +1010,7 @@ bool httpsRequest(const char* host, const char* method, const String& path,
       sizeLine.trim();
       if (!sizeLine.length()) {
         if (millis() >= deadline) { drained = false; break; }
-        delay(1);
+        pauseNet();
         continue;
       }
       long n = strtol(sizeLine.c_str(), nullptr, 16);
@@ -934,7 +1029,7 @@ bool httpsRequest(const char* host, const char* method, const String& path,
         if ((int)responseOut.length() < HTTP_BODY_MAX) responseOut += (char)b;
       }
       if (!ssl.connected() && !ssl.available()) break;
-      delay(5);
+      pauseNet();
     }
     drained = false; // 길이를 모르면 남은 바이트가 있을 수 있다
   }
@@ -1000,6 +1095,45 @@ bool firestoreWrite(const char* method, const String& path, const String& body) 
   if (lastHttpStatus != 401 && lastHttpStatus != 403) return false;
   if (!firebaseLogin(true)) return false;
   return httpsRequest("firestore.googleapis.com", method, path, body, idToken, resp);
+}
+
+/** 문 시작 알림만 실어 보내고 응답은 기다리지 않는다. 모터가 HTTPS에 막히지 않게. */
+void postServoStartAsync(Slot& s, const char* action) {
+  if (isWired() || !ENABLE_WIFI) {
+    if (isWired()) announceServoStart(s, action);
+    return;
+  }
+  dropDetachedHttp();
+  if (!firebaseLogin() || !waitForNetworkReady() || !sslEnsure("firestore.googleapis.com")) return;
+  const String created = epochMsString();
+  String body = String("{\"fields\":{") +
+                "\"station\":{\"stringValue\":\"" + STATION_CODE + "\"}," +
+                "\"slot\":{\"integerValue\":\"" + String(s.id) + "\"}," +
+                "\"kind\":{\"stringValue\":\"servo\"}," +
+                "\"payload\":{\"mapValue\":{\"fields\":{" +
+                "\"action\":{\"stringValue\":\"" + action + "\"}," +
+                "\"phase\":{\"stringValue\":\"start\"}," +
+                "\"move_ms\":{\"integerValue\":\"" + String(SERVO_SWEEP_MS) + "\"}," +
+                "\"since_start_ms\":{\"integerValue\":\"0\"}," +
+                "\"align\":{\"stringValue\":\"motor\"}," +
+                "\"deg\":{\"integerValue\":\"" + String(DOOR_CLOSED_DEG) + "\"}}}}," +
+                (s.cmd.length() ? "\"cmd\":{\"stringValue\":\"" + s.cmd + "\"}," : String("")) +
+                "\"created_at\":{\"integerValue\":\"" + created + "\"}}}";
+  const String path = firestorePath("/device_events");
+  httpsDepth++;
+  ssl.print("POST "); ssl.print(path); ssl.println(" HTTP/1.1");
+  ssl.println("Host: firestore.googleapis.com");
+  ssl.println("Connection: close");
+  ssl.println("Accept: application/json");
+  ssl.println("Accept-Encoding: identity");
+  ssl.println("Content-Type: application/json");
+  ssl.print("Authorization: Bearer "); ssl.println(idToken);
+  ssl.print("Content-Length: "); ssl.println(body.length());
+  ssl.println();
+  ssl.print(body);
+  ssl.flush();
+  httpDetach = true;
+  httpsDepth--;
 }
 
 bool markCommandDone(const String& docId) {
@@ -1319,10 +1453,10 @@ void pollCommands() {
                 "\"orderBy\":[{\"field\":{\"fieldPath\":\"created_at\"},\"direction\":\"ASCENDING\"}],\"limit\":1}}";
   String resp;
   const String path = firestorePath(":runQuery");
-  if (!httpsRequest("firestore.googleapis.com", "POST", path, body, idToken, resp, 8000)) {
+  if (!httpsRequest("firestore.googleapis.com", "POST", path, body, idToken, resp, 3000)) {
     if (lastHttpStatus != 401 && lastHttpStatus != 403) return;
     if (!firebaseLogin(true)) return;
-    if (!httpsRequest("firestore.googleapis.com", "POST", path, body, idToken, resp, 8000)) return;
+    if (!httpsRequest("firestore.googleapis.com", "POST", path, body, idToken, resp, 3000)) return;
   }
   // 응답을 끝까지 읽었으면 연결을 유지한다. 매번 TLS를 다시 하면 문 명령이 늦어진다.
   // 오래된 sense/stale 이 앞에 있어도 같은 응답에서 연속 처리 → open이 막히지 않음
@@ -1343,7 +1477,7 @@ void setup() {
   Serial.begin(9600);
   while (!Serial && (unsigned long)(millis() - rgbBootStart) < 3000) rgbService(20);
   rgbService(200);
-  Serial.println("[BOOT] UmbrellaLocker v15 — fast sensors");
+  Serial.println("[BOOT] UmbrellaLocker v20 — led and fast open");
 
   for (int i = 0; i < 2; i++) {
     pinMode(SS_PINS[i], OUTPUT);
@@ -1374,22 +1508,24 @@ void setup() {
   }
   Serial.print("[BOOT] ready station="); Serial.println(STATION_CODE);
   if (ENABLE_SERVO) {
-    // 부팅 시 한 번만 닫힘 위치로 맞춘 뒤 펄스를 끊는다. 이후 대기 중에는 보내지 않는다.
-    servoDrive[0] = true;
-    servoDrive[1] = true;
+    // 닫힘 각도로 맞춘 뒤에도 펄스를 유지해 두 문이 그 자리를 잡는다.
     for (uint8_t n = 0; n < 25; n++) {
       pulseServos();
       delay(20);
     }
-    releaseServo(0);
-    releaseServo(1);
   }
 }
 
 void loop() {
   serviceServos();
+  showLed();
   pollSerial();
   updateLinkMode();
+  // 센서보다 문 명령을 먼저 본다. 열린 뒤에는 바로 다음 조회가 이어진다.
+  if (!isWired() && millis() - lastPollMs >= 20) {
+    pollCommands();
+    lastPollMs = millis();
+  }
   for (Slot& s : slots) {
     updateWatch(s);
     handleReader(s);
@@ -1397,24 +1533,14 @@ void loop() {
   pollIrEdges();
   if (isWired()) return;
 
-  // 문 명령이 먼저다. 센서 변화가 있을 때만 그 다음에 바로 올린다.
-  if (millis() - lastPollMs >= POLL_MS) {
-    lastPollMs = millis();
-    pollCommands();
-  }
-
   const bool heartbeatLate = millis() - lastPresenceMs >= 6000;
-  static unsigned long presenceTryMs = 0;
-  if ((presenceDirty || heartbeatLate) && millis() - presenceTryMs >= 120) {
-    presenceTryMs = millis();
+  if ((presenceDirty || heartbeatLate) && millis() - lastPresenceMs >= 1500) {
     const bool retrySensor = presenceDirty;
     presenceDirty = false;
     if (!reportPresence()) {
       if (retrySensor) presenceDirty = true;
       Serial.println("[HB] fail");
     }
-    return;
   }
-
   flushOneNet();
 }
